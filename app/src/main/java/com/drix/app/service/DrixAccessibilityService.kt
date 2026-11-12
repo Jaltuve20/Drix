@@ -4,12 +4,17 @@ import android.accessibilityservice.AccessibilityService
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.drix.app.core.*
+import android.os.Handler
+import android.os.Looper
+import kotlin.random.Random
 import com.drix.app.data.DrixPrefs
 
 class DrixAccessibilityService : AccessibilityService() {
     private lateinit var overlay: OverlayWidget
     private var lastRun = 0L
     private var lastClickSig = ""
+    private var pendingSig = ""
+    private val handler = Handler(Looper.getMainLooper())
 
     override fun onServiceConnected() {
         DrixPrefs.init(this)
@@ -31,16 +36,23 @@ class DrixAccessibilityService : AccessibilityService() {
 
         when (val d = OrderEvaluator.evaluate(order, cfg)) {
             is Decision.Accept -> {
-                if (sig != lastClickSig) { // evita doble clic sobre el mismo pedido
-                    val btn = OrderParser.findAccept(root)
-                    if (btn?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) lastClickSig = sig
+                if (sig != lastClickSig && sig != pendingSig) { // evita doble clic sobre el mismo pedido
+                    pendingSig = sig
+                    // Retraso aleatorio entre min y max (configurable en Configuración)
+                    val wait = Random.nextLong(cfg.minDelayMs.toLong(), cfg.maxDelayMs.toLong() + 1)
+                    handler.postDelayed({
+                        // Re-lee la pantalla: si el pedido ya desapareció, no hace clic
+                        val btn = rootInActiveWindow?.let { OrderParser.findAccept(it) }
+                        if (btn?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true) lastClickSig = sig
+                        pendingSig = ""
+                    }, wait)
+                    overlay.show("✅ S/ %.1f · %.2f/km · acepta en %d ms".format(order.fare, order.perKm, wait), true)
                 }
-                overlay.show("✅ S/ %.1f · %.2f/km".format(order.fare, order.perKm), true)
             }
             is Decision.Reject -> overlay.show("❌ ${d.why}", false)
         }
     }
 
     override fun onInterrupt() {}
-    override fun onDestroy() { if (::overlay.isInitialized) overlay.hide(); super.onDestroy() }
+    override fun onDestroy() { handler.removeCallbacksAndMessages(null); if (::overlay.isInitialized) overlay.hide(); super.onDestroy() }
 }

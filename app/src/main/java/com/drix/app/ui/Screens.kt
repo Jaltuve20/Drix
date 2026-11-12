@@ -28,6 +28,22 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import java.io.File
+import org.osmdroid.config.Configuration
+import org.osmdroid.events.MapEventsReceiver
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.MapEventsOverlay
+import org.osmdroid.views.overlay.Polygon
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
 @Composable
 fun DCard(mod: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) = Card(
@@ -74,7 +90,7 @@ fun HomeScreen() {
                 }
             }
             ZoneMap(zones, brush)
-            Text("Dibuja con el dedo. Sustituye este lienzo por Maps Compose u osmdroid para un mapa real.",
+            Text("Toca el mapa para marcar un círculo de 150 m. Con «Borrar», toca un círculo para quitarlo. Necesita internet.",
                 fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(top = 6.dp))
         }
         DCard {
@@ -87,31 +103,65 @@ fun HomeScreen() {
     }
 }
 
-/** Lienzo interactivo: cada arrastre añade círculos verdes/rojos; "Borrar" quita los cercanos. */
+/** Mapa real (OpenStreetMap). Toca para crear círculos de 150 m; "Borrar" quita el tocado. Requiere internet. */
 @Composable
 fun ZoneMap(zones: List<Zone>, brush: String) {
-    Canvas(
-        Modifier.fillMaxWidth().aspectRatio(1f).background(Color(0xFFEEF2F6), RoundedCornerShape(12.dp))
-            .pointerInput(brush) {
-                detectDragGestures { ch, _ ->
-                    val p = Offset(ch.position.x / size.width, ch.position.y / size.height)
+    val ctx = LocalContext.current
+    val brushNow by rememberUpdatedState(brush)
+    val map = remember {
+        Configuration.getInstance().apply {
+            load(ctx, ctx.getSharedPreferences("osm", 0))
+            userAgentValue = ctx.packageName // OSM exige identificar la app
+            osmdroidBasePath = File(ctx.cacheDir, "osm"); osmdroidTileCache = File(ctx.cacheDir, "osm/tiles")
+        }
+        MapView(ctx).apply {
+            setTileSource(TileSourceFactory.MAPNIK); setMultiTouchControls(true)
+            controller.setZoom(15.0); controller.setCenter(GeoPoint(-12.0464, -77.0428)) // Lima
+            // Evita que el scroll de la pantalla robe los gestos del mapa
+            setOnTouchListener { v, _ -> v.parent.requestDisallowInterceptTouchEvent(true); false }
+            overlays.add(MapEventsOverlay(object : MapEventsReceiver {
+                override fun singleTapConfirmedHelper(p: GeoPoint): Boolean {
                     val cur = DrixPrefs.zones.value
                     DrixPrefs.setZones(
-                        if (brush == "e") cur.filter { (Offset(it.x, it.y) - p).getDistance() > it.r }
-                        else cur + Zone(p.x, p.y, 0.07f, brush == "g")
+                        if (brushNow == "e") cur.filter { GeoPoint(it.lat, it.lon).distanceToAsDouble(p) > it.r }
+                        else cur + Zone(p.latitude, p.longitude, 150f, brushNow == "g")
                     )
+                    return true
                 }
+                override fun longPressHelper(p: GeoPoint) = false
+            }))
+        }
+    }
+    val me = remember { MyLocationNewOverlay(GpsMyLocationProvider(ctx), map) }
+    fun goMe() {
+        me.enableMyLocation(); if (!map.overlays.contains(me)) map.overlays.add(me)
+        me.runOnFirstFix { map.post { me.myLocation?.let { map.controller.animateTo(it) } } }
+        me.myLocation?.let { map.controller.animateTo(it) }
+    }
+    val perm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { if (it) goMe() }
+    DisposableEffect(map) { map.onResume(); onDispose { map.onPause(); me.disableMyLocation() } }
+
+    Column {
+        AndroidView(
+            factory = { map }, modifier = Modifier.fillMaxWidth().height(320.dp).clip(RoundedCornerShape(12.dp)),
+            update = { m ->
+                m.overlays.removeAll { it is Polygon }
+                zones.forEach { z ->
+                    m.overlays.add(Polygon(m).apply {
+                        points = Polygon.pointsAsCircle(GeoPoint(z.lat, z.lon), z.r.toDouble())
+                        fillPaint.color = (if (z.accept) 0x5922C55E else 0x59EF4444).toInt()
+                        outlinePaint.color = (if (z.accept) 0xFF16A34A else 0xFFDC2626).toInt()
+                        outlinePaint.strokeWidth = 3f
+                        setOnClickListener { _, _, _ -> false } // deja pasar el toque al mapa
+                    })
+                }
+                m.invalidate()
             }
-    ) {
-        val s = size.width
-        listOf(.17f, .42f, .67f, .9f).forEach { t ->            // calles
-            drawLine(Color.White, Offset(t * s, 0f), Offset(t * s, s), 14f)
-            drawLine(Color.White, Offset(0f, t * s), Offset(s, t * s), 14f)
-        }
-        zones.forEach { z ->
-            drawCircle((if (z.accept) Color(0xFF22C55E) else Color(0xFFEF4444)).copy(alpha = .35f), z.r * s, Offset(z.x * s, z.y * s))
-        }
-        drawCircle(Color.White, 16f, center); drawCircle(Color(0xFF2563EB), 11f, center) // GPS simulado
+        )
+        OutlinedButton({
+            if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) goMe()
+            else perm.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+        }, Modifier.padding(top = 8.dp)) { Text("📍 Mi ubicación") }
     }
 }
 
@@ -151,6 +201,8 @@ fun SettingsScreen() {
     var fr by remember(cfg) { mutableStateOf(cfg.minFare.toString()) }
     var h1 by remember(cfg) { mutableStateOf(cfg.startHour.toString()) }
     var h2 by remember(cfg) { mutableStateOf(cfg.endHour.toString()) }
+    var d1 by remember(cfg) { mutableStateOf(cfg.minDelayMs.toString()) }
+    var d2 by remember(cfg) { mutableStateOf(cfg.maxDelayMs.toString()) }
 
     Page("Filtros de rentabilidad") {
         DCard {
@@ -162,12 +214,22 @@ fun SettingsScreen() {
                 Field("Desde (h)", h1, Modifier.weight(1f)) { h1 = it }
                 Field("Hasta (h)", h2, Modifier.weight(1f)) { h2 = it }
             }
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Field("Retraso mín (ms)", d1, Modifier.weight(1f)) { d1 = it }
+                Field("Retraso máx (ms)", d2, Modifier.weight(1f)) { d2 = it }
+            }
+            Text("Tiempo al azar entre ambos antes de pulsar Aceptar. Los pedidos caducan en segundos: no lo subas demasiado.",
+                fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
         }
         Button({
+            val lo = (d1.toIntOrNull() ?: cfg.minDelayMs).coerceIn(0, 5000)
+            val hi = (d2.toIntOrNull() ?: cfg.maxDelayMs).coerceIn(lo, 5000)
             DrixPrefs.update {
                 it.copy(minPerKm = km.toFloatOrNull() ?: it.minPerKm, maxPickupKm = pk.toFloatOrNull() ?: it.maxPickupKm,
                     minFare = fr.toFloatOrNull() ?: it.minFare, startHour = h1.toIntOrNull()?.coerceIn(0, 23) ?: it.startHour,
-                    endHour = h2.toIntOrNull()?.coerceIn(0, 24) ?: it.endHour)
+                    endHour = h2.toIntOrNull()?.coerceIn(0, 24) ?: it.endHour,
+                    minDelayMs = lo, maxDelayMs = hi)
             }
         }, Modifier.fillMaxWidth().height(52.dp), colors = ButtonDefaults.buttonColors(Yellow, Ink)) { Text("Guardar cambios", fontWeight = FontWeight.Bold) }
         DCard { Text("Las zonas delimitadas se editan dibujando sobre el mapa en Inicio.", fontSize = 12.sp, color = Color.Gray) }

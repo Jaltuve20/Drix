@@ -12,11 +12,13 @@ data class Config(
     val startHour: Int = 6,          // horario de trabajo
     val endHour: Int = 23,
     val enabled: Boolean = false,    // automatización ON/OFF
-    val targetPkg: String = "sinet.startup.inDriver" // app a automatizar (elegible)
+    val targetPkg: String = "sinet.startup.inDriver", // app a automatizar (elegible)
+    val minDelayMs: Int = 400,   // retraso mínimo antes de pulsar Aceptar
+    val maxDelayMs: Int = 1200   // retraso máximo (se elige al azar entre ambos)
 )
 
-/** Zona circular en coordenadas normalizadas 0..1 del mapa. */
-data class Zone(val x: Float, val y: Float, val r: Float, val accept: Boolean)
+/** Zona circular: centro (lat/lon) y radio en metros. */
+data class Zone(val lat: Double, val lon: Double, val r: Float, val accept: Boolean)
 
 /** Almacén único (SharedPreferences + StateFlow) compartido por UI y servicio. */
 object DrixPrefs {
@@ -33,11 +35,12 @@ object DrixPrefs {
         _cfg.value = Config(
             sp.getFloat("km", d.minPerKm), sp.getFloat("pick", d.maxPickupKm),
             sp.getFloat("fare", d.minFare), sp.getInt("h1", d.startHour),
-            sp.getInt("h2", d.endHour), sp.getBoolean("on", false), sp.getString("pkg", d.targetPkg)!!
+            sp.getInt("h2", d.endHour), sp.getBoolean("on", false), sp.getString("pkg", d.targetPkg)!!,
+            sp.getInt("dmin", d.minDelayMs), sp.getInt("dmax", d.maxDelayMs)
         )
-        _zones.value = sp.getString("zones", "")!!.split(";").mapNotNull {
+        _zones.value = sp.getString("zones2", "")!!.split(";").mapNotNull {
             val p = it.split(",")
-            if (p.size != 4) null else Zone(p[0].toFloat(), p[1].toFloat(), p[2].toFloat(), p[3] == "1")
+            if (p.size != 4) null else Zone(p[0].toDouble(), p[1].toDouble(), p[2].toFloat(), p[3] == "1")
         }
     }
 
@@ -45,11 +48,12 @@ object DrixPrefs {
         val c = t(_cfg.value); _cfg.value = c
         sp.edit().putFloat("km", c.minPerKm).putFloat("pick", c.maxPickupKm)
             .putFloat("fare", c.minFare).putInt("h1", c.startHour)
-            .putInt("h2", c.endHour).putBoolean("on", c.enabled).putString("pkg", c.targetPkg).apply()
+            .putInt("h2", c.endHour).putBoolean("on", c.enabled).putString("pkg", c.targetPkg)
+            .putInt("dmin", c.minDelayMs).putInt("dmax", c.maxDelayMs).apply()
     }
 
     fun setZones(z: List<Zone>) {
         _zones.value = z
-        sp.edit().putString("zones", z.joinToString(";") { "${it.x},${it.y},${it.r},${if (it.accept) 1 else 0}" }).apply()
+        sp.edit().putString("zones2", z.joinToString(";") { "${it.lat},${it.lon},${it.r},${if (it.accept) 1 else 0}" }).apply()
     }
 }
