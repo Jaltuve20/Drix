@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Intent
 import android.graphics.Path
+import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
@@ -34,7 +35,19 @@ class DrixAccessibilityService : AccessibilityService() {
 
     private fun handled(sig: String) = sig == pendingSig || (sig == doneSig && System.currentTimeMillis() - doneAt < 15000)
     private fun markDone(sig: String) { doneSig = sig; doneAt = System.currentTimeMillis() }
-    private fun click(n: AccessibilityNodeInfo?) = n?.performAction(AccessibilityNodeInfo.ACTION_CLICK) == true
+    /** Pulsa un nodo: ACTION_CLICK en él o en un ancestro clicable; si falla, toca el centro de su área con un gesto. */
+    private fun click(raw: AccessibilityNodeInfo?): Boolean {
+        if (raw == null) return false
+        var n: AccessibilityNodeInfo? = raw
+        while (n != null) {
+            if (n.isClickable && n.isEnabled && n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) return true
+            n = n.parent
+        }
+        val r = Rect(); raw.getBoundsInScreen(r)
+        if (r.isEmpty) return false
+        val tap = Path().apply { moveTo(r.exactCenterX(), r.exactCenterY()) }
+        return dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(tap, 0, 60)).build(), null, null)
+    }
 
     /** Clic tras un retraso aleatorio (configurable). Devuelve el retraso usado. */
     private fun clickLater(cfg: Config, find: () -> AccessibilityNodeInfo?, done: (Boolean) -> Unit = {}): Long {
@@ -52,7 +65,10 @@ class DrixAccessibilityService : AccessibilityService() {
         val root: AccessibilityNodeInfo = rootInActiveWindow ?: return
         val tree = OrderParser.build(root)          // un solo recorrido del árbol
         val texts = tree.texts
-        DrixPrefs.debug.value = texts.take(60).joinToString("\n")
+        val btn = root.findAccessibilityNodeInfosByText("Aceptar").firstOrNull()
+        val box = Rect().also { btn?.getBoundsInScreen(it) }
+        DrixPrefs.debug.value = (btn?.let { "[BOTÓN] ${it.className} clic=${it.isClickable} activo=${it.isEnabled} área=$box\n" } ?: "[BOTÓN] no encontrado\n") +
+            texts.take(60).joinToString("\n")
         val zones = DrixPrefs.zones.value
 
         // A) Pantalla de DETALLE ("Aceptar por PEN…")
@@ -62,7 +78,11 @@ class DrixAccessibilityService : AccessibilityService() {
                 is Decision.Accept -> {
                     if (handled(o.sig)) return
                     pendingSig = o.sig
-                    val w = clickLater(cfg, { rootInActiveWindow?.let { OrderParser.findAccept(it) } }) { ok -> pendingSig = ""; if (ok) markDone(o.sig) }
+                    val w = clickLater(cfg, { rootInActiveWindow?.let { OrderParser.findAccept(it) } }) { ok ->
+                        pendingSig = ""
+                        if (ok) { markDone(o.sig); overlay.show("🟢 Pulsé «Aceptar» · S/ %.1f".format(o.fare), true) }
+                        else overlay.show("⚠️ No encontré/pulsé el botón Aceptar", false)
+                    }
                     overlay.show("✅ S/ %.1f · %.2f/km · %s · %d ms".format(o.fare, o.perKm, o.district?.name ?: "?", w), true)
                 }
                 is Decision.Reject -> {
@@ -96,7 +116,10 @@ class DrixAccessibilityService : AccessibilityService() {
                         // Verifica que la tarjeta siga mostrando el mismo pedido antes de pulsar
                         val same = card.node.refresh() && OrderParser.parse(OrderParser.build(card.node).texts)?.sig == o.sig
                         if (same) target?.takeIf { it.refresh() } else null
-                    }) { ok -> pendingSig = ""; if (ok) markDone(o.sig) }
+                    }) { ok ->
+                        pendingSig = ""
+                        if (ok) markDone(o.sig) else overlay.show("⚠️ No pude tocar la tarjeta", false)
+                    }
                     overlay.show("✅ S/ %.1f · %.2f/km · %s · %d ms".format(o.fare, o.perKm, o.district?.name ?: "?", w), true)
                     return
                 }

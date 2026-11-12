@@ -26,7 +26,7 @@ sealed interface Decision {
 object OrderParser {
     private val FARE = Regex("""(?:S/\.?|PEN)\s?(\d+(?:[.,]\d{1,2})?)""", RegexOption.IGNORE_CASE)       // PEN7, S/ 12.50
     private val DIST = Regex("""(\d+(?:[.,]\d+)?)\s?(km|m)\b""", RegexOption.IGNORE_CASE)                 // ~6,2 km, 850 m
-    private val ACCEPT_FARE = Regex("""Aceptar por\s*(?:PEN|S/)\s?(\d+(?:[.,]\d{1,2})?)""", RegexOption.IGNORE_CASE)
+    private val ACCEPT_FARE = Regex("""Aceptar por[\s|]*(?:PEN|S/)\s?(\d+(?:[.,]\d{1,2})?)""", RegexOption.IGNORE_CASE)
     private val PERKM = Regex("""S/\s?\d+(?:[.,]\d+)?/km[\s|]*~?\s?(\d+(?:[.,]\d+)?)\s?km""", RegexOption.IGNORE_CASE)
 
     private fun num(s: String) = s.replace(',', '.').toFloatOrNull()
@@ -50,7 +50,7 @@ object OrderParser {
     }
 
     /** Pantalla de DETALLE ("Aceptar por PEN6.50"): precio del botón; recojo = "~9,5 km" junto a S/x/km. */
-    fun isDetail(texts: List<String>) = texts.any { it.startsWith("Aceptar por", true) }
+    fun isDetail(texts: List<String>) = texts.any { it.contains("Aceptar por", true) }
     fun parseDetail(texts: List<String>): Order? {
         val joined = texts.joinToString(" | ")
         val fare = ACCEPT_FARE.find(joined)?.groupValues?.get(1)?.let(::num) ?: return null
@@ -68,13 +68,9 @@ object OrderParser {
         return out
     }
 
-    private fun climb(s: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        var n: AccessibilityNodeInfo? = s
-        while (n != null && !n.isClickable) n = n.parent
-        return n
-    }
-    fun findText(root: AccessibilityNodeInfo, s: String) = root.findAccessibilityNodeInfosByText(s).firstOrNull()?.let(::climb)
-    fun clickTarget(card: AccessibilityNodeInfo) = findText(card, "Aceptar") ?: climb(card)
+    /** Devuelve el nodo encontrado por texto (o descripción); el servicio decide cómo pulsarlo. */
+    fun findText(root: AccessibilityNodeInfo, s: String) = root.findAccessibilityNodeInfosByText(s).firstOrNull()
+    fun clickTarget(card: AccessibilityNodeInfo) = findText(card, "Aceptar") ?: card
     fun findAccept(root: AccessibilityNodeInfo) = findText(root, "Aceptar por") ?: findText(root, "Aceptar")
 }
 
