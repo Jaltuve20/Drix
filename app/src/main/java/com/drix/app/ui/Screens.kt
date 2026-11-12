@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 import android.Manifest
+import com.drix.app.service.DrixAccessibilityService
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -81,6 +82,7 @@ fun HomeScreen() {
                 }, colors = SwitchDefaults.colors(checkedTrackColor = Color(0xFF22C55E)))
             }
         }
+        RefreshCard()
         TargetAppCard()
         DCard {
             Text("Zonas GPS", fontWeight = FontWeight.Bold)
@@ -101,6 +103,7 @@ fun HomeScreen() {
             Text("Recojo máx: %.1f km".format(cfg.maxPickupKm), fontSize = 13.sp)
             Slider(cfg.maxPickupKm, { v -> DrixPrefs.update { it.copy(maxPickupKm = (v * 10).toInt() / 10f) } }, valueRange = 0.3f..8f)
         }
+        DebugCard()
     }
 }
 
@@ -224,6 +227,10 @@ fun SettingsScreen() {
             }
             Text("Tiempo al azar entre ambos antes de pulsar Aceptar. Los pedidos caducan en segundos: no lo subas demasiado.",
                 fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
+            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Aceptar si no se identifica el distrito", Modifier.weight(1f), fontSize = 13.sp)
+                Switch(cfg.unknownOk, { v -> DrixPrefs.update { it.copy(unknownOk = v) } })
+            }
         }
         Button({
             val lo = (d1.toIntOrNull() ?: cfg.minDelayMs).coerceIn(0, 5000)
@@ -321,4 +328,45 @@ fun AppPickerDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
         },
         confirmButton = { TextButton(onDismiss) { Text("Cancelar") } }
     )
+}
+
+/* ───────────── REFRESCAR + DIAGNÓSTICO ───────────── */
+/** Abre la app objetivo, sale del detalle y recarga la lista de pedidos. */
+@Composable
+fun RefreshCard() {
+    val ctx = LocalContext.current
+    val cfg by DrixPrefs.cfg.collectAsStateWithLifecycle()
+    DCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Refrescar lista", fontWeight = FontWeight.Bold)
+                Text("Abre la app objetivo, cierra el detalle y recarga los pedidos", fontSize = 12.sp, color = Color.Gray)
+            }
+            Button({
+                val svc = DrixAccessibilityService.instance
+                if (svc == null) Toast.makeText(ctx, "Activa Drix Automático en Accesibilidad", Toast.LENGTH_LONG).show()
+                else {
+                    ctx.packageManager.getLaunchIntentForPackage(cfg.targetPkg)?.let { ctx.startActivity(it) }
+                    svc.refresh(1500)
+                }
+            }, colors = ButtonDefaults.buttonColors(Yellow, Ink)) { Text("🔄 Refrescar", fontWeight = FontWeight.Bold) }
+        }
+    }
+}
+
+/** Muestra los textos que el servicio lee de la app objetivo (para ajustar el lector). */
+@Composable
+fun DebugCard() {
+    val ctx = LocalContext.current
+    val dbg by DrixPrefs.debug.collectAsStateWithLifecycle()
+    DCard {
+        Text("Diagnóstico", fontWeight = FontWeight.Bold)
+        Text("Última lectura de la app objetivo:", fontSize = 11.sp, color = Color.Gray)
+        Text(dbg.ifBlank { "— aún no hay lecturas —" }, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
+        OutlinedButton({
+            (ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                .setPrimaryClip(android.content.ClipData.newPlainText("drix", dbg))
+            Toast.makeText(ctx, "Copiado", Toast.LENGTH_SHORT).show()
+        }, Modifier.padding(top = 8.dp)) { Text("Copiar texto") }
+    }
 }

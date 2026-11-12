@@ -14,7 +14,8 @@ data class Config(
     val enabled: Boolean = false,    // automatización ON/OFF
     val targetPkg: String = "sinet.startup.inDriver", // app a automatizar (elegible)
     val minDelayMs: Int = 400,   // retraso mínimo antes de pulsar Aceptar
-    val maxDelayMs: Int = 1200   // retraso máximo (se elige al azar entre ambos)
+    val maxDelayMs: Int = 1200,  // retraso máximo (se elige al azar entre ambos)
+    val unknownOk: Boolean = false // aceptar aunque no se identifique el distrito
 )
 
 /** Distrito marcado: aceptar (verde) o rechazar (rojo). */
@@ -27,6 +28,7 @@ object DrixPrefs {
     private val _zones = MutableStateFlow<List<Zone>>(emptyList())
     val cfg = _cfg.asStateFlow()
     val zones = _zones.asStateFlow()
+    val debug = MutableStateFlow("") // últimos textos leídos por el servicio (diagnóstico)
 
     fun init(ctx: Context) {
         if (::sp.isInitialized) return
@@ -36,7 +38,7 @@ object DrixPrefs {
             sp.getFloat("km", d.minPerKm), sp.getFloat("pick", d.maxPickupKm),
             sp.getFloat("fare", d.minFare), sp.getInt("h1", d.startHour),
             sp.getInt("h2", d.endHour), sp.getBoolean("on", false), sp.getString("pkg", d.targetPkg)!!,
-            sp.getInt("dmin", d.minDelayMs), sp.getInt("dmax", d.maxDelayMs)
+            sp.getInt("dmin", d.minDelayMs), sp.getInt("dmax", d.maxDelayMs), sp.getBoolean("unk", d.unknownOk)
         )
         _zones.value = sp.getString("zones3", "")!!.split(";").mapNotNull {
             val p = it.split(":")
@@ -49,7 +51,7 @@ object DrixPrefs {
         sp.edit().putFloat("km", c.minPerKm).putFloat("pick", c.maxPickupKm)
             .putFloat("fare", c.minFare).putInt("h1", c.startHour)
             .putInt("h2", c.endHour).putBoolean("on", c.enabled).putString("pkg", c.targetPkg)
-            .putInt("dmin", c.minDelayMs).putInt("dmax", c.maxDelayMs).apply()
+            .putInt("dmin", c.minDelayMs).putInt("dmax", c.maxDelayMs).putBoolean("unk", c.unknownOk).apply()
     }
 
     fun setZones(z: List<Zone>) {
