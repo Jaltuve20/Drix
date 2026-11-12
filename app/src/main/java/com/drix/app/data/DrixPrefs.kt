@@ -17,8 +17,8 @@ data class Config(
     val maxDelayMs: Int = 1200   // retraso máximo (se elige al azar entre ambos)
 )
 
-/** Zona circular: centro (lat/lon) y radio en metros. */
-data class Zone(val lat: Double, val lon: Double, val r: Float, val accept: Boolean)
+/** Distrito marcado: aceptar (verde) o rechazar (rojo). */
+data class Zone(val name: String, val accept: Boolean)
 
 /** Almacén único (SharedPreferences + StateFlow) compartido por UI y servicio. */
 object DrixPrefs {
@@ -38,9 +38,9 @@ object DrixPrefs {
             sp.getInt("h2", d.endHour), sp.getBoolean("on", false), sp.getString("pkg", d.targetPkg)!!,
             sp.getInt("dmin", d.minDelayMs), sp.getInt("dmax", d.maxDelayMs)
         )
-        _zones.value = sp.getString("zones2", "")!!.split(";").mapNotNull {
-            val p = it.split(",")
-            if (p.size != 4) null else Zone(p[0].toDouble(), p[1].toDouble(), p[2].toFloat(), p[3] == "1")
+        _zones.value = sp.getString("zones3", "")!!.split(";").mapNotNull {
+            val p = it.split(":")
+            if (p.size != 2) null else Zone(p[0], p[1] == "1")
         }
     }
 
@@ -54,6 +54,6 @@ object DrixPrefs {
 
     fun setZones(z: List<Zone>) {
         _zones.value = z
-        sp.edit().putString("zones2", z.joinToString(";") { "${it.lat},${it.lon},${it.r},${if (it.accept) 1 else 0}" }).apply()
+        sp.edit().putString("zones3", z.joinToString(";") { "${it.name}:${if (it.accept) 1 else 0}" }).apply()
     }
 }

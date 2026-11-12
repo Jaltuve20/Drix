@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 import android.Manifest
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.draw.clip
@@ -90,7 +91,7 @@ fun HomeScreen() {
                 }
             }
             ZoneMap(zones, brush)
-            Text("Toca el mapa para marcar un círculo de 150 m. Con «Borrar», toca un círculo para quitarlo. Necesita internet.",
+            Text("Toca un distrito para marcarlo completo (verde = aceptar, rojo = rechazar; «Borrar» lo quita). Si hay distritos verdes, solo acepta pedidos cuyo recojo esté en ellos.",
                 fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(top = 6.dp))
         }
         DCard {
@@ -121,11 +122,12 @@ fun ZoneMap(zones: List<Zone>, brush: String) {
             setOnTouchListener { v, _ -> v.parent.requestDisallowInterceptTouchEvent(true); false }
             overlays.add(MapEventsOverlay(object : MapEventsReceiver {
                 override fun singleTapConfirmedHelper(p: GeoPoint): Boolean {
-                    val cur = DrixPrefs.zones.value
-                    DrixPrefs.setZones(
-                        if (brushNow == "e") cur.filter { GeoPoint(it.lat, it.lon).distanceToAsDouble(p) > it.r }
-                        else cur + Zone(p.latitude, p.longitude, 150f, brushNow == "g")
-                    )
+                    val d = Districts.at(p.latitude, p.longitude)
+                    if (d == null) { Toast.makeText(ctx, "Aquí no hay distrito de Lima/Callao", Toast.LENGTH_SHORT).show(); return true }
+                    val cur = DrixPrefs.zones.value.filter { it.name != d.name }
+                    val b = brushNow
+                    DrixPrefs.setZones(if (b == "e") cur else cur + Zone(d.name, b == "g"))
+                    Toast.makeText(ctx, d.name + ": " + when (b) { "g" -> "verde (aceptar)"; "r" -> "rojo (rechazar)"; else -> "sin marcar" }, Toast.LENGTH_SHORT).show()
                     return true
                 }
                 override fun longPressHelper(p: GeoPoint) = false
@@ -147,8 +149,9 @@ fun ZoneMap(zones: List<Zone>, brush: String) {
             update = { m ->
                 m.overlays.removeAll { it is Polygon }
                 zones.forEach { z ->
+                    val d = Districts.all.firstOrNull { it.name == z.name } ?: return@forEach
                     m.overlays.add(Polygon(m).apply {
-                        points = Polygon.pointsAsCircle(GeoPoint(z.lat, z.lon), z.r.toDouble())
+                        points = Polygon.pointsAsCircle(GeoPoint(d.lat, d.lon), d.r.toDouble())
                         fillPaint.color = (if (z.accept) 0x5922C55E else 0x59EF4444).toInt()
                         outlinePaint.color = (if (z.accept) 0xFF16A34A else 0xFFDC2626).toInt()
                         outlinePaint.strokeWidth = 3f
