@@ -1,5 +1,7 @@
 package com.drix.app.ui
 
+import android.content.Intent
+import android.net.Uri
 import android.util.Patterns
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -306,3 +308,21 @@ fun ProfileLoadErrorScreen(msg: String, onRetry: () -> Unit, onSignOut: () -> Un
         MainButton("Reintentar", false, onRetry)
         TextButton(onSignOut, Modifier.padding(top = 10.dp)) { Text("Cerrar sesión", color = Ink) }
     }
+
+/** Pantalla para cuentas cuyo correo aún no fue habilitado (o cuyo acceso venció). */
+@Composable
+fun NoAccessScreen(email: String, expired: Boolean, onRetry: () -> Unit, onSignOut: () -> Unit) {
+    val ctx = LocalContext.current
+    AuthPage(
+        if (expired) "Tu acceso venció" else "Acceso pendiente",
+        if (expired) "El acceso de $email terminó. Escríbenos por WhatsApp para renovarlo."
+        else "Tu correo $email todavía no está habilitado. Escríbenos por WhatsApp con ese correo y te damos acceso."
+    ) {
+        MainButton("Ya me habilitaron · Reintentar", false, onRetry)
+        TextButton({
+            val msg = if (expired) "Hola Drix, quiero renovar mi acceso.\nCorreo: $email" else "Hola Drix, quiero acceso a la app.\nCorreo: $email"
+            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/51900385006?text=" + Uri.encode(msg))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }, Modifier.padding(top = 10.dp)) { Text("💬 Pedir acceso por WhatsApp", color = Ink, fontWeight = FontWeight.Bold) }
+        TextButton(onSignOut) { Text("Cerrar sesión", color = Ink) }
+    }
+}

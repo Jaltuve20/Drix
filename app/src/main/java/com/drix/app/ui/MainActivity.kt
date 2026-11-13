@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.drix.app.auth.AccessDenied
 import com.drix.app.auth.AuthRepo
 import com.drix.app.auth.Profile
 import kotlinx.coroutines.launch
@@ -56,6 +57,7 @@ private sealed interface PState {
     data object Loading : PState
     data class Loaded(val p: Profile?) : PState
     data class Failed(val msg: String) : PState
+    data class Denied(val expired: Boolean) : PState
 }
 
 /** Flujo: splash → login/registro → (perfil incompleto) completar datos → (cuenta nueva) tutorial → app. */
@@ -73,7 +75,7 @@ fun DrixRoot() {
     LaunchedEffect(user?.uid, version) {
         ps = PState.Loading
         val u = user ?: return@LaunchedEffect
-        ps = AuthRepo.loadProfile(ctx, u.uid).fold({ PState.Loaded(it) }, { PState.Failed(AuthRepo.message(it) ?: "Revisa tu conexión.") })
+        ps = AuthRepo.loadProfile(ctx, u.uid).fold({ PState.Loaded(it) }, { if (it is AccessDenied) PState.Denied(it.expired) else PState.Failed(AuthRepo.message(it) ?: "Revisa tu conexión.") })
     }
     val st = ps
     val p = (st as? PState.Loaded)?.p
@@ -81,6 +83,7 @@ fun DrixRoot() {
         splash -> SplashScreen()
         user == null -> AuthFlow()
         busy || st is PState.Loading -> SplashScreen()
+        st is PState.Denied -> NoAccessScreen(user?.email.orEmpty(), st.expired, { AuthRepo.version.value++ }, { AuthRepo.signOut() })
         st is PState.Failed -> ProfileLoadErrorScreen(st.msg, { AuthRepo.version.value++ }, { AuthRepo.signOut() })
         p == null || !p.complete -> CompleteProfileScreen(user?.email.orEmpty())
         !p.tutorialDone -> TutorialScreen(p.firstName.orEmpty()) {

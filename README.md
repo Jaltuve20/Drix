@@ -54,35 +54,7 @@ Lo nuevo en esta versión:
 2. Elige ubicación (ej. `southamerica-east1`) y **modo de producción**.
 3. Pestaña **Reglas** → reemplaza todo por esto y pulsa **Publicar**:
 
-   ```
-   rules_version = '2';
-   service cloud.firestore {
-     match /databases/{database}/documents {
-
-       function validName(s) { return s is string && s.size() >= 2 && s.size() <= 60; }
-       function validData(d) {
-         return d.keys().hasOnly(['firstName', 'lastName', 'name', 'phone', 'email', 'tutorialDone', 'createdAt'])
-           && validName(d.firstName) && validName(d.lastName)
-           && d.phone is string && d.phone.matches('^\+[0-9]{9,15}$');
-       }
-       function complete(d) {
-         return d.get('firstName', '') != '' && d.get('lastName', '') != '' && d.get('phone', '') != '';
-       }
-
-       match /users/{uid} {
-         allow read: if request.auth != null && request.auth.uid == uid;
-         allow create: if request.auth != null && request.auth.uid == uid && validData(request.resource.data);
-         // Nombres y teléfono se pueden escribir UNA vez (mientras el perfil está incompleto).
-         // Después solo se permite marcar el tutorial como visto. Cambios de datos: por WhatsApp (consola de Firebase).
-         allow update: if request.auth != null && request.auth.uid == uid && (
-             (!complete(resource.data) && validData(request.resource.data))
-             || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tutorialDone'])
-                 && request.resource.data.tutorialDone == true));
-         allow delete: if false;
-       }
-     }
-   }
-   ```
+   Copia TODO el contenido del archivo `firestore.rules` de esta carpeta y pégalo ahí (incluye el control de acceso, ver abajo).
    (Cada usuario solo lee su propio perfil. **Nombres y teléfono se guardan una vez y ya no se pueden cambiar desde la app**; si alguien pide un cambio por WhatsApp, edítalo tú en Firestore → users → su documento. Este mismo texto está en `firestore.rules`.)
 
 > Si te saltas el paso 5, el registro funciona igual, pero el teléfono no se guardará.
@@ -102,6 +74,13 @@ Lo nuevo en esta versión:
 4. En Firebase → Authentication → Usuarios verás tu cuenta; en Firestore → `users` verás tu perfil.
 
 ---
+
+## Control de acceso (quién puede usar la app)
+Aunque alguien se registre, **solo entra a la app si su correo está en la lista de acceso**. Si no, ve «Acceso pendiente» con un botón de WhatsApp.
+**Dar acceso:** Firebase → Firestore Database → **Iniciar colección** (la primera vez) → ID de colección: `allowed` → **ID del documento = el correo en minúsculas** (ej. `juan@gmail.com`) → agrega un campo cualquiera (ej. `plan` = `mensual`, tipo string) → Guardar.
+**Con vencimiento (opcional):** agrega un campo `until` de tipo **timestamp** con la fecha final. Pasada esa fecha la app muestra «Tu acceso venció». Para renovar, cambia la fecha.
+**Quitar acceso:** borra el documento del correo (o pon un `until` pasado). Se aplica la próxima vez que la persona abra la app.
+Necesita internet al abrir la app (la lista se consulta siempre al servidor).
 
 ## Notas importantes
 - **Llave de firma (`app/drix.keystore`)**: es una llave de *pruebas* incluida para que el SHA-1 sea siempre el mismo (si no, GitHub Actions genera una distinta en cada compilación y Google deja de funcionar). Contraseña: `drixdebug`, alias `drix`. **No la uses para publicar en Play Store**; para eso crea una llave propia y privada.

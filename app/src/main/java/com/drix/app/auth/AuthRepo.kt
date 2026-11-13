@@ -15,6 +15,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
+import com.google.firebase.firestore.Source
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -31,6 +32,9 @@ data class Profile(
     val complete get() = !firstName.isNullOrBlank() && !lastName.isNullOrBlank() && !phone.isNullOrBlank()
     val fullName get() = listOfNotNull(firstName, lastName).joinToString(" ").trim()
 }
+
+/** El correo no está en la lista de acceso (allowed/{correo}) o su acceso venció. */
+class AccessDenied(val expired: Boolean) : Exception(if (expired) "Acceso vencido" else "Sin acceso")
 
 object AuthRepo {
     private val auth get() = FirebaseAuth.getInstance()
@@ -87,7 +91,17 @@ object AuthRepo {
 
     /** Carga el perfil. Éxito con null = la cuenta aún no tiene perfil (hay que pedir los datos). */
     suspend fun loadProfile(ctx: Context, uid: String): Result<Profile?> = runCatching {
-        val d = FirebaseFirestore.getInstance().collection("users").document(uid).get().wait()
+        val db = FirebaseFirestore.getInstance()
+        // 1) Control de acceso: solo entran los correos que el dueño agregó en Firestore → allowed/{correo}.
+        //    Se lee SIEMPRE del servidor (Source.SERVER) para que un acceso revocado no siga funcionando desde la caché.
+        val email = user?.email?.trim()?.lowercase().orEmpty()
+        if (email.isBlank()) throw AccessDenied(false)
+        val a = db.collection("allowed").document(email).get(Source.SERVER).wait()
+        if (!a.exists()) throw AccessDenied(false)
+        val until = a.getTimestamp("until") // opcional: fecha de vencimiento
+        if (until != null && until.toDate().before(java.util.Date())) throw AccessDenied(true)
+        // 2) Perfil
+        val d = db.collection("users").document(uid).get().wait()
         if (!d.exists()) null else {
             val local = ctx.getSharedPreferences("drix_auth", Context.MODE_PRIVATE).getBoolean("tut_$uid", false)
             // Cuentas antiguas (sin el campo tutorialDone) cuentan como "tutorial ya visto": solo lo ven los nuevos.
@@ -132,8 +146,13 @@ object AuthRepo {
         is FirebaseAuthInvalidUserException -> "No existe una cuenta con ese correo."
         is FirebaseAuthInvalidCredentialsException -> "Correo o contraseña incorrectos."
         is FirebaseNetworkException -> "Sin conexión a internet."
-        is FirebaseFirestoreException -> if (e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED)
-            "Firestore rechazó la operación: revisa las reglas (README, paso 5)." else "No pudimos conectar con la base de datos."
+        is FirebaseFirestoreException -> when (e.code) {
+            FirebaseFirestoreException.Code.PERMISSION_DENIED ->
+                "Firestore rechazó la operación (PERMISSION_DENIED). Publica las reglas de firestore.rules y revisa que la API de Cloud Firestore esté habilitada (README, paso 5)."
+            FirebaseFirestoreException.Code.UNAVAILABLE, FirebaseFirestoreException.Code.NOT_FOUND ->
+                "No se pudo llegar a Firestore (${e.code}). Revisa que creaste la base de datos (paso 5) y que app/google-services.json sea de ESE mismo proyecto. Detalle: ${e.message}"
+            else -> "Error de base de datos (${e.code}): ${e.message}"
+        }
         is FirebaseTooManyRequestsException -> "Demasiados intentos. Espera un momento."
         else -> e.message ?: "Ocurrió un error. Inténtalo de nuevo."
     }

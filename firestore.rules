@@ -6,18 +6,35 @@ service cloud.firestore {
     function validData(d) {
       return d.keys().hasOnly(['firstName', 'lastName', 'name', 'phone', 'email', 'tutorialDone', 'createdAt'])
         && validName(d.firstName) && validName(d.lastName)
-        && d.phone is string && d.phone.matches('^\\+[0-9]{9,15}$');
+        && d.phone is string && d.phone.matches('^[+][0-9]{9,15}$');
     }
     function complete(d) {
       return d.get('firstName', '') != '' && d.get('lastName', '') != '' && d.get('phone', '') != '';
     }
 
+    // Lista de acceso: la administras TÚ desde la consola de Firebase (la app no puede escribir aquí).
+    // Documento = correo en minúsculas. Campo opcional "until" (timestamp) = fecha de vencimiento.
+    function allowedDoc() {
+      return get(/databases/$(database)/documents/allowed/$(request.auth.token.email.lower()));
+    }
+    function hasAccess() {
+      return request.auth != null && request.auth.token.email != null
+        && exists(/databases/$(database)/documents/allowed/$(request.auth.token.email.lower()))
+        && allowedDoc().data.get('until', request.time) >= request.time;
+    }
+
+    match /allowed/{email} {
+      allow get: if request.auth != null && request.auth.token.email != null
+                 && request.auth.token.email.lower() == email;
+      allow list, write: if false;
+    }
+
     match /users/{uid} {
-      allow read: if request.auth != null && request.auth.uid == uid;
-      allow create: if request.auth != null && request.auth.uid == uid && validData(request.resource.data);
+      allow read: if request.auth.uid == uid && hasAccess();
+      allow create: if request.auth.uid == uid && hasAccess() && validData(request.resource.data);
       // Nombres y teléfono se pueden escribir UNA vez (mientras el perfil está incompleto).
       // Después solo se permite marcar el tutorial como visto. Cambios de datos: por WhatsApp (consola de Firebase).
-      allow update: if request.auth != null && request.auth.uid == uid && (
+      allow update: if request.auth.uid == uid && hasAccess() && (
           (!complete(resource.data) && validData(request.resource.data))
           || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tutorialDone'])
               && request.resource.data.tutorialDone == true));
