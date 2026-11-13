@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "311816484063",
+    "project_id": "drixx1",
+    "storage_bucket": "drixx1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:311816484063:android:b3cfb2ba8e8ac5f535a56a",
+        "android_client_info": {
+          "package_name": "com.drix.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDdDipYQmJI5EESoXgd6r01bPlJ-b6d1KU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
