@@ -79,8 +79,19 @@ fun DrixRoot() {
     }
     val st = ps
     val p = (st as? PState.Loaded)?.p
+    // Al llegar el contador a 00: se cierra la sesión (y se apaga la automatización) y se muestra «renueva por WhatsApp».
+    var expiredEmail by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(user?.uid) { if (user != null) expiredEmail = null }
+    LaunchedEffect(p?.until, user?.uid) {
+        val end = p?.until ?: return@LaunchedEffect
+        while (System.currentTimeMillis() < end) delay((end - System.currentTimeMillis()).coerceIn(250L, 30_000L))
+        expiredEmail = user?.email
+        AuthRepo.signOut()
+    }
+    val ex = expiredEmail
     when {
         splash -> SplashScreen()
+        user == null && ex != null -> ExpiredScreen(ex) { expiredEmail = null }
         user == null -> AuthFlow()
         busy || st is PState.Loading -> SplashScreen()
         st is PState.Denied -> NoAccessScreen(user?.email.orEmpty(), st.expired, { AuthRepo.version.value++ }, { AuthRepo.signOut() })

@@ -326,3 +326,15 @@ fun NoAccessScreen(email: String, expired: Boolean, onRetry: () -> Unit, onSignO
         TextButton(onSignOut) { Text("Cerrar sesión", color = Ink) }
     }
 }
+
+/** Se muestra cuando el contador llegó a 00: la sesión ya se cerró. */
+@Composable
+fun ExpiredScreen(email: String, onLogin: () -> Unit) {
+    val ctx = LocalContext.current
+    AuthPage("Tu cuenta venció", "El acceso de $email terminó y cerramos tu sesión. Renueva tu cuenta por WhatsApp para continuar.") {
+        MainButton("💬 Renovar cuenta por WhatsApp", false) {
+            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/51900385006?text=" + Uri.encode("Hola Drix, quiero renovar mi cuenta.\nCorreo: $email"))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+        TextButton(onLogin, Modifier.padding(top = 10.dp)) { Text("Ya renové · Iniciar sesión", color = Ink) }
+    }
+}

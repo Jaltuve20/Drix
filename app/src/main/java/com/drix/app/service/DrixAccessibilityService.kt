@@ -121,6 +121,7 @@ class DrixAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
         val cfg = DrixPrefs.cfg.value
         if (e == null || !cfg.enabled) return
+        if (!DrixPrefs.accessValid()) { DrixPrefs.revokeAccess(); return } // acceso vencido o sin sesión → se apaga
         val pkg = e.packageName?.toString()
         if (pkg != cfg.targetPkg) {
             // Al salir de la app objetivo se oculta el aviso (se ignoran barra de estado, teclado y Drix)
@@ -144,6 +145,7 @@ class DrixAccessibilityService : AccessibilityService() {
     private fun process() {
         val cfg = DrixPrefs.cfg.value
         if (!cfg.enabled) return
+        if (!DrixPrefs.accessValid()) { DrixPrefs.revokeAccess(); return }
         lastRun = System.currentTimeMillis()
         val now = lastRun
         val root: AccessibilityNodeInfo = rootInActiveWindow ?: return

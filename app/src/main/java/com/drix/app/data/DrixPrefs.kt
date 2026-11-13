@@ -57,6 +57,23 @@ object DrixPrefs {
             .putInt("dmin", c.minDelayMs).putInt("dmax", c.maxDelayMs).putBoolean("unk", c.unknownOk).apply()
     }
 
+    /* ── Acceso (lista de correos habilitados). Lo consulta también el servicio de accesibilidad, sin depender de la pantalla. ── */
+    fun grantAccess(untilMs: Long?) {
+        if (!::sp.isInitialized) return
+        sp.edit().putBoolean("acc_ok", true).putLong("acc_until", untilMs ?: 0L).apply()
+    }
+    /** Quita el acceso y APAGA la automatización. */
+    fun revokeAccess() {
+        if (!::sp.isInitialized) return
+        sp.edit().putBoolean("acc_ok", false).putLong("acc_until", 0L).apply()
+        if (_cfg.value.enabled) update { it.copy(enabled = false) }
+    }
+    fun accessValid(): Boolean {
+        if (!::sp.isInitialized || !sp.getBoolean("acc_ok", false)) return false
+        val u = sp.getLong("acc_until", 0L)
+        return u == 0L || System.currentTimeMillis() < u
+    }
+
     fun setZones(z: List<Zone>) {
         _zones.value = z
         sp.edit().putString("zones3", z.joinToString(";") { "${it.name}:${if (it.accept) 1 else 0}" }).apply()

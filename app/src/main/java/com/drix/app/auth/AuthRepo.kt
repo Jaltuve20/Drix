@@ -5,6 +5,7 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import com.drix.app.data.DrixPrefs
 import com.google.android.gms.tasks.Task
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -97,11 +98,13 @@ object AuthRepo {
         // 1) Control de acceso: solo entran los correos que el dueño agregó en Firestore → allowed/{correo}.
         //    Se lee SIEMPRE del servidor (Source.SERVER) para que un acceso revocado no siga funcionando desde la caché.
         val email = user?.email?.trim()?.lowercase().orEmpty()
-        if (email.isBlank()) throw AccessDenied(false)
+        fun deny(expired: Boolean): Nothing { DrixPrefs.revokeAccess(); throw AccessDenied(expired) }
+        if (email.isBlank()) deny(false)
         val a = db.collection("allowed").document(email).get(Source.SERVER).wait()
-        if (!a.exists()) throw AccessDenied(false)
+        if (!a.exists()) deny(false)
         val until = a.getTimestamp("until") // opcional: fecha de vencimiento
-        if (until != null && until.toDate().before(java.util.Date())) throw AccessDenied(true)
+        if (until != null && until.toDate().before(java.util.Date())) deny(true)
+        DrixPrefs.grantAccess(until?.toDate()?.time) // el servicio de accesibilidad solo trabaja mientras haya acceso vigente
         // 2) Perfil
         val d = db.collection("users").document(uid).get().wait()
         if (!d.exists()) null else {
@@ -138,7 +141,8 @@ object AuthRepo {
         return reset(mail)
     }
 
-    fun signOut() = auth.signOut()
+    /** Cerrar sesión también apaga la automatización. */
+    fun signOut() { DrixPrefs.revokeAccess(); auth.signOut() }
 
     /** Traduce los errores de Firebase a mensajes claros en español. */
     fun message(e: Throwable): String? = when (e) {

@@ -154,7 +154,8 @@ fun HomeScreen(onGo: (Int) -> Unit) {
                     Text("Acepta pedidos que cumplan tus filtros", fontSize = 12.sp, color = Muted)
                 }
                 Switch(checked = cfg.enabled, onCheckedChange = { on ->
-                    if (!on || ctx.ensurePermissions()) DrixPrefs.update { it.copy(enabled = on) }
+                    if (on && !DrixPrefs.accessValid()) Toast.makeText(ctx, "Tu acceso no está vigente. Renueva tu cuenta por WhatsApp.", Toast.LENGTH_LONG).show()
+                    else if (!on || ctx.ensurePermissions()) DrixPrefs.update { it.copy(enabled = on) }
                 }, colors = SwitchDefaults.colors(checkedTrackColor = Go, checkedThumbColor = Color.White))
             }
         }
@@ -493,7 +494,7 @@ fun ProfileScreen(profile: Profile) {
         }
         DebugCard()
         PillButton("Cerrar sesión", color = Charcoal) { AuthRepo.signOut() }
-        Text("Drix v1.5.1", fontSize = 12.sp, color = Muted)
+        Text("Drix v1.5.2", fontSize = 12.sp, color = Muted)
     }
 }
 
