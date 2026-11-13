@@ -495,7 +495,7 @@ fun ProfileScreen(profile: Profile, onAdmin: () -> Unit = {}) {
         if (profile.isAdmin) PillButton("🛠 Panel de administrador", onClick = onAdmin)
         DebugCard()
         PillButton("Cerrar sesión", color = Charcoal) { AuthRepo.signOut() }
-        Text("Drix v1.6.0", fontSize = 12.sp, color = Muted)
+        Text("Drix v1.6.1", fontSize = 12.sp, color = Muted)
     }
 }
 

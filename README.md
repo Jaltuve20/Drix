@@ -89,6 +89,7 @@ Lo nuevo en esta versión:
 
 **Anti-abuso de la prueba gratis:** la prueba se bloquea por dispositivo (identificador de Android, guardado con hash) y por número de celular. No es infalible (alguien con otro celular y otro número podría repetirla), pero lo hace incómodo. Si necesitas resetear la prueba de alguien: Firestore → `trialClaims` → borra sus marcas (`d_…` y `p_+51…`) y su documento en `allowed`.
 
+**Tiempo real:** mientras el cliente tiene la app abierta (o el servicio de accesibilidad activo) y hay internet, los cambios del panel le llegan en segundos: si le **quitas el acceso**, la pantalla cambia a «Acceso pendiente» y la automatización se apaga; si le **renuevas**, el contador y el vencimiento se actualizan solos. Tras un vencimiento o un acceso quitado, la automatización queda apagada: el cliente debe volver a activar el interruptor de Inicio.
 Necesita internet al abrir la app (la lista se consulta siempre al servidor).
 
 ## Notas importantes

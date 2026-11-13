@@ -106,35 +106,64 @@ object AuthRepo {
 
     suspend fun reload() { runCatching { user?.reload()?.wait() } }
 
-    /** Carga el perfil. Éxito con null = la cuenta aún no tiene perfil (hay que pedir los datos). */
-    suspend fun loadProfile(ctx: Context, uid: String): Result<Profile?> = runCatching {
+    /** Resultado de comprobar el acceso del correo actual. */
+    data class AccessInfo(val admin: Boolean, val until: Long?, val trial: Boolean)
+
+    /**
+     * Comprueba en el SERVIDOR (Source.SERVER: un acceso revocado no sigue funcionando desde la caché) si el correo actual
+     * tiene acceso y hasta cuándo, y actualiza DrixPrefs (el servicio de accesibilidad solo trabaja con acceso vigente).
+     *  - admins/{correo}  → administrador: sin vencimiento + panel.
+     *  - allowed/{correo} → cliente: vence en "until" (o 1 día después de createdAt si es prueba gratis).
+     * Lanza AccessDenied si no hay acceso.
+     */
+    private suspend fun access(): AccessInfo {
         val db = FirebaseFirestore.getInstance()
         val email = user?.email?.trim()?.lowercase().orEmpty()
         fun deny(expired: Boolean): Nothing { DrixPrefs.revokeAccess(); throw AccessDenied(expired) }
         if (email.isBlank()) deny(false)
-        // 1) Control de acceso. Se lee SIEMPRE del servidor (Source.SERVER) para que un acceso revocado no siga funcionando desde la caché.
-        //    - admins/{correo}  → administrador: sin vencimiento + panel.
-        //    - allowed/{correo} → cliente: vence en "until" (o 1 día después de createdAt si es prueba gratis).
         val admin = runCatching { db.collection("admins").document(email).get(Source.SERVER).wait().exists() }.getOrDefault(false)
-        var until: Long? = null
-        var trial = false
-        if (admin) DrixPrefs.grantAccess(null)
-        else {
-            val a = db.collection("allowed").document(email).get(Source.SERVER).wait()
-            if (!a.exists()) deny(false)
-            val u = untilOf(a)
-            if (u != null && u < System.currentTimeMillis()) deny(true)
-            until = u
-            trial = a.getBoolean("trial") == true && a.getTimestamp("until") == null
-            DrixPrefs.grantAccess(u) // el servicio de accesibilidad solo trabaja mientras haya acceso vigente
+        if (admin) { DrixPrefs.grantAccess(null); return AccessInfo(true, null, false) }
+        val a = db.collection("allowed").document(email).get(Source.SERVER).wait()
+        if (!a.exists()) deny(false)
+        val u = untilOf(a)
+        if (u != null && u < System.currentTimeMillis()) deny(true)
+        DrixPrefs.grantAccess(u)
+        return AccessInfo(false, u, a.getBoolean("trial") == true && a.getTimestamp("until") == null)
+    }
+
+    /** Vuelve a comprobar el acceso (lo usa el servicio cuando el administrador cambia algo en tiempo real). */
+    suspend fun checkAccess(): Result<AccessInfo> = runCatching { access() }
+
+    /**
+     * TIEMPO REAL: avisa cuando el administrador cambia el acceso de este correo (quitar, activar, renovar).
+     * Escucha allowed/{correo} y admins/{correo}. Devuelve una función para dejar de escuchar.
+     */
+    fun watchAccess(onChange: () -> Unit): () -> Unit {
+        val email = user?.email?.trim()?.lowercase().orEmpty()
+        if (email.isBlank()) return {}
+        val db = FirebaseFirestore.getInstance()
+        val regs = listOf("allowed", "admins").map { col ->
+            var first = true
+            db.collection(col).document(email).addSnapshotListener { snap, err ->
+                if (err != null) return@addSnapshotListener                 // sin red / sin permiso: se ignora
+                if (first) { first = false; return@addSnapshotListener }    // la 1.ª lectura es el estado actual, no un cambio
+                // "No existe" leído solo de la caché local no cuenta (evita expulsar por datos viejos sin conexión)
+                if (snap != null && snap.metadata.isFromCache && !snap.exists()) return@addSnapshotListener
+                onChange()
+            }
         }
-        // 2) Perfil
-        val d = db.collection("users").document(uid).get().wait()
+        return { regs.forEach { it.remove() } }
+    }
+
+    /** Carga el perfil. Éxito con null = la cuenta aún no tiene perfil (hay que pedir los datos). */
+    suspend fun loadProfile(ctx: Context, uid: String): Result<Profile?> = runCatching {
+        val acc = access()
+        val d = FirebaseFirestore.getInstance().collection("users").document(uid).get().wait()
         if (!d.exists()) null else {
             val local = ctx.getSharedPreferences("drix_auth", Context.MODE_PRIVATE).getBoolean("tut_$uid", false)
             // Cuentas antiguas (sin el campo tutorialDone) cuentan como "tutorial ya visto": solo lo ven los nuevos.
             Profile(d.getString("firstName"), d.getString("lastName"), d.getString("phone"),
-                (d.getBoolean("tutorialDone") ?: true) || local, until, admin, trial)
+                (d.getBoolean("tutorialDone") ?: true) || local, acc.until, acc.admin, acc.trial && !acc.admin)
         }
     }
 

@@ -74,6 +74,21 @@ fun DrixRoot() {
     val version by AuthRepo.version.collectAsStateWithLifecycle()
     DisposableEffect(Unit) { val off = AuthRepo.listen { user = it }; onDispose { off() } }
     LaunchedEffect(Unit) { delay(1300); splash = false }
+    // TIEMPO REAL: si el administrador te quita el acceso o te renueva, la pantalla cambia sola (sin pantalla de carga ni salir de la app).
+    DisposableEffect(user?.uid) {
+        val u = user
+        if (u == null) onDispose { } else {
+            val stop = AuthRepo.watchAccess {
+                scope.launch {
+                    AuthRepo.loadProfile(ctx, u.uid).fold(
+                        { ps = PState.Loaded(it) },
+                        { if (it is AccessDenied) ps = PState.Denied(it.expired) } // otros errores (red) se ignoran
+                    )
+                }
+            }
+            onDispose { stop() }
+        }
+    }
     LaunchedEffect(user?.uid, version) {
         ps = PState.Loading
         val u = user ?: return@LaunchedEffect
