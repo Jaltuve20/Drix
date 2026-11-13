@@ -75,11 +75,20 @@ Lo nuevo en esta versión:
 
 ---
 
-## Control de acceso (quién puede usar la app)
-Aunque alguien se registre, **solo entra a la app si su correo está en la lista de acceso**. Si no, ve «Acceso pendiente» con un botón de WhatsApp.
-**Dar acceso:** Firebase → Firestore Database → **Iniciar colección** (la primera vez) → ID de colección: `allowed` → **ID del documento = el correo en minúsculas** (ej. `juan@gmail.com`) → agrega un campo cualquiera (ej. `plan` = `mensual`, tipo string) → Guardar.
-**Con vencimiento (opcional):** agrega un campo `until` de tipo **timestamp** con la fecha final. Pasada esa fecha la app muestra «Tu acceso venció». Para renovar, cambia la fecha.
-**Quitar acceso:** borra el documento del correo (o pon un `until` pasado). Se aplica la próxima vez que la persona abra la app.
+## Control de acceso, suscripciones y panel de administrador (v1.6.0)
+- **Cliente nuevo** → se registra y recibe **1 día de prueba gratis** automáticamente (una por dispositivo y una por celular).
+- Pasado ese día, la sesión se cierra y ve «Tu cuenta venció · Renueva por WhatsApp».
+- **Tú (administrador)** abres la app → **Perfil → 🛠 Panel de administrador**: ves a todos los clientes (los que necesitan atención aparecen primero), y con un toque **activas o renuevas**: eliges «1 mes · S/7», «2 meses · S/10» u otros meses/monto. También puedes escribirles por WhatsApp o quitarles el acceso.
+- Cada pago se suma **desde hoy** (cuenta nueva o ya vencida) o **desde su vencimiento actual** si aún le quedan días. Los meses son de calendario (12/11 → 12/12).
+- Tus precios rápidos están en `app/src/main/java/com/drix/app/ui/Admin.kt` → `PRESETS` (una sola línea).
+
+**Configuración de UNA sola vez (consola de Firebase → Firestore → Datos):**
+1. Publica las reglas del archivo `firestore.rules` (pestaña Reglas).
+2. Crea la colección **`admins`** → ID del documento = **tu correo en minúsculas** → cualquier campo (ej. `rol` = `admin`). Solo se puede crear desde la consola: nadie puede ascenderse a administrador desde la app.
+3. Abre la app (con internet) con ese correo: te aparecerá el botón del panel. El administrador no vence nunca.
+
+**Anti-abuso de la prueba gratis:** la prueba se bloquea por dispositivo (identificador de Android, guardado con hash) y por número de celular. No es infalible (alguien con otro celular y otro número podría repetirla), pero lo hace incómodo. Si necesitas resetear la prueba de alguien: Firestore → `trialClaims` → borra sus marcas (`d_…` y `p_+51…`) y su documento en `allowed`.
+
 Necesita internet al abrir la app (la lista se consulta siempre al servidor).
 
 ## Notas importantes

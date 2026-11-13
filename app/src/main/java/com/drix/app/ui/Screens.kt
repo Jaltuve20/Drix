@@ -436,7 +436,7 @@ fun ZoneMap(zones: List<Zone>, mode: ZoneMode, prefer: Boolean, fly: Pair<Distri
 /* ═════════════ PERFIL ═════════════ */
 
 @Composable
-fun ProfileScreen(profile: Profile) {
+fun ProfileScreen(profile: Profile, onAdmin: () -> Unit = {}) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val email = AuthRepo.user?.email.orEmpty()
@@ -459,7 +459,7 @@ fun ProfileScreen(profile: Profile) {
                 }
             }
         }
-        profile.until?.let { SubscriptionCard(it) { whatsapp("Hola Drix, quiero renovar mi acceso.\nCorreo: $email") } }
+        profile.until?.let { SubscriptionCard(it, profile.isTrial) { whatsapp("Hola Drix, quiero renovar mi acceso.\nCorreo: $email") } }
         DCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Lock, null, tint = Amber, modifier = Modifier.size(18.dp))
@@ -492,9 +492,10 @@ fun ProfileScreen(profile: Profile) {
                 }
             }
         }
+        if (profile.isAdmin) PillButton("🛠 Panel de administrador", onClick = onAdmin)
         DebugCard()
         PillButton("Cerrar sesión", color = Charcoal) { AuthRepo.signOut() }
-        Text("Drix v1.5.3", fontSize = 12.sp, color = Muted)
+        Text("Drix v1.6.0", fontSize = 12.sp, color = Muted)
     }
 }
 
@@ -550,7 +551,7 @@ fun ExtrasScreen() {
 
 /** Contador de vencimiento del acceso: meses · días · horas · min · seg. */
 @Composable
-fun SubscriptionCard(untilMs: Long, onRenew: () -> Unit) {
+fun SubscriptionCard(untilMs: Long, trial: Boolean = false, onRenew: () -> Unit) {
     var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) { while (true) { delay(1000); nowMs = System.currentTimeMillis() } }
     val zone = ZoneId.systemDefault()
@@ -569,7 +570,7 @@ fun SubscriptionCard(untilMs: Long, onRenew: () -> Unit) {
     val tone = if (expired || soon) Color(0xFFDC2626) else Ink
     val date = remember(untilMs) { SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault()).format(Date(untilMs)) }
     DCard {
-        Text(if (expired) "Tu cuenta venció" else "Tu cuenta vence en:", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = tone)
+        Text(if (expired) "Tu cuenta venció" else if (trial) "Tu prueba gratis termina en:" else "Tu cuenta vence en:", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = tone)
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CountTile(months, "Meses", tone, Modifier.weight(1f))

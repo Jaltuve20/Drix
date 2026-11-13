@@ -1,6 +1,7 @@
 package com.drix.app.auth
 
 import android.content.Context
+import android.provider.Settings
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
@@ -12,11 +13,13 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
 import com.google.firebase.auth.*
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Source
+import java.security.MessageDigest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -29,8 +32,12 @@ import kotlin.coroutines.resumeWithException
 data class Profile(
     val firstName: String? = null, val lastName: String? = null, val phone: String? = null,
     val tutorialDone: Boolean = true,
-    /** Fecha de vencimiento del acceso (ms desde 1970), o null si no vence. Viene de allowed/{correo}.until */
-    val until: Long? = null
+    /** Fecha de vencimiento del acceso (ms desde 1970), o null si no vence. Viene de allowed/{correo}. */
+    val until: Long? = null,
+    /** true si el correo está en admins/{correo}: acceso sin vencimiento + panel de administrador. */
+    val isAdmin: Boolean = false,
+    /** true mientras la cuenta está en su prueba gratis (1 día). */
+    val isTrial: Boolean = false
 ) {
     val complete get() = !firstName.isNullOrBlank() && !lastName.isNullOrBlank() && !phone.isNullOrBlank()
     val fullName get() = listOfNotNull(firstName, lastName).joinToString(" ").trim()
@@ -41,6 +48,13 @@ class AccessDenied(val expired: Boolean) : Exception(if (expired) "Acceso vencid
 
 object AuthRepo {
     private val auth get() = FirebaseAuth.getInstance()
+    private lateinit var app: Context
+    fun init(ctx: Context) { app = ctx.applicationContext }
+
+    /** Vencimiento (ms) de un documento allowed/{correo}: campo "until"; si es prueba gratis, createdAt + 1 día; si no, null (no vence). */
+    fun untilOf(d: DocumentSnapshot): Long? =
+        d.getTimestamp("until")?.toDate()?.time
+            ?: if (d.getBoolean("trial") == true) (d.getTimestamp("createdAt")?.toDate()?.time ?: 0L) + 86_400_000L else null
     val user: FirebaseUser? get() = auth.currentUser
 
     /** true mientras se crea una cuenta (evita mostrar el formulario de perfil por un instante). */
@@ -95,22 +109,32 @@ object AuthRepo {
     /** Carga el perfil. Éxito con null = la cuenta aún no tiene perfil (hay que pedir los datos). */
     suspend fun loadProfile(ctx: Context, uid: String): Result<Profile?> = runCatching {
         val db = FirebaseFirestore.getInstance()
-        // 1) Control de acceso: solo entran los correos que el dueño agregó en Firestore → allowed/{correo}.
-        //    Se lee SIEMPRE del servidor (Source.SERVER) para que un acceso revocado no siga funcionando desde la caché.
         val email = user?.email?.trim()?.lowercase().orEmpty()
         fun deny(expired: Boolean): Nothing { DrixPrefs.revokeAccess(); throw AccessDenied(expired) }
         if (email.isBlank()) deny(false)
-        val a = db.collection("allowed").document(email).get(Source.SERVER).wait()
-        if (!a.exists()) deny(false)
-        val until = a.getTimestamp("until") // opcional: fecha de vencimiento
-        if (until != null && until.toDate().before(java.util.Date())) deny(true)
-        DrixPrefs.grantAccess(until?.toDate()?.time) // el servicio de accesibilidad solo trabaja mientras haya acceso vigente
+        // 1) Control de acceso. Se lee SIEMPRE del servidor (Source.SERVER) para que un acceso revocado no siga funcionando desde la caché.
+        //    - admins/{correo}  → administrador: sin vencimiento + panel.
+        //    - allowed/{correo} → cliente: vence en "until" (o 1 día después de createdAt si es prueba gratis).
+        val admin = runCatching { db.collection("admins").document(email).get(Source.SERVER).wait().exists() }.getOrDefault(false)
+        var until: Long? = null
+        var trial = false
+        if (admin) DrixPrefs.grantAccess(null)
+        else {
+            val a = db.collection("allowed").document(email).get(Source.SERVER).wait()
+            if (!a.exists()) deny(false)
+            val u = untilOf(a)
+            if (u != null && u < System.currentTimeMillis()) deny(true)
+            until = u
+            trial = a.getBoolean("trial") == true && a.getTimestamp("until") == null
+            DrixPrefs.grantAccess(u) // el servicio de accesibilidad solo trabaja mientras haya acceso vigente
+        }
         // 2) Perfil
         val d = db.collection("users").document(uid).get().wait()
         if (!d.exists()) null else {
             val local = ctx.getSharedPreferences("drix_auth", Context.MODE_PRIVATE).getBoolean("tut_$uid", false)
             // Cuentas antiguas (sin el campo tutorialDone) cuentan como "tutorial ya visto": solo lo ven los nuevos.
-            Profile(d.getString("firstName"), d.getString("lastName"), d.getString("phone"), (d.getBoolean("tutorialDone") ?: true) || local, until?.toDate()?.time)
+            Profile(d.getString("firstName"), d.getString("lastName"), d.getString("phone"),
+                (d.getBoolean("tutorialDone") ?: true) || local, until, admin, trial)
         }
     }
 
@@ -124,8 +148,38 @@ object AuthRepo {
         )
         if (!existed) { data["tutorialDone"] = false; data["createdAt"] = FieldValue.serverTimestamp() } // nuevo → verá el tutorial
         ref.set(data, SetOptions.merge()).wait()
+        if (!existed) claimTrial(phone) // cuenta nueva → prueba gratis de 1 día (una por dispositivo y por celular)
         runCatching { u.updateProfile(UserProfileChangeRequest.Builder().setDisplayName("$first $last").build()).wait() }
         Unit
+    }
+
+    @android.annotation.SuppressLint("HardwareIds")
+    private fun deviceId(): String {
+        val raw = Settings.Secure.getString(app.contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
+        val src = if (raw.isBlank() || raw == "9774d56d682e549c") {
+            val sp = app.getSharedPreferences("drix_auth", Context.MODE_PRIVATE)
+            "fallback-" + (sp.getString("dev", null) ?: java.util.UUID.randomUUID().toString().also { sp.edit().putString("dev", it).apply() })
+        } else raw
+        return MessageDigest.getInstance("SHA-256").digest(src.toByteArray()).joinToString("") { "%02x".format(it) }.take(32)
+    }
+
+    /**
+     * Prueba gratis de 1 día: crea allowed/{correo} (trial) + dos "marcas" (dispositivo y celular) en un solo paso atómico.
+     * Las reglas impiden repetirla: si el dispositivo o el celular ya la usaron, falla y la cuenta queda sin acceso.
+     */
+    private suspend fun claimTrial(phone: String) {
+        if (!::app.isInitialized) return
+        val email = user?.email?.trim()?.lowercase() ?: return
+        val db = FirebaseFirestore.getInstance()
+        val allowedRef = db.collection("allowed").document(email)
+        if (runCatching { allowedRef.get(Source.SERVER).wait().exists() }.getOrDefault(true)) return
+        val dev = deviceId()
+        val claim = mapOf("email" to email, "createdAt" to FieldValue.serverTimestamp())
+        db.batch()
+            .set(db.collection("trialClaims").document("d_$dev"), claim)
+            .set(db.collection("trialClaims").document("p_$phone"), claim)
+            .set(allowedRef, mapOf("plan" to "prueba", "trial" to true, "deviceId" to dev, "phone" to phone, "createdAt" to FieldValue.serverTimestamp()))
+            .commit().wait()
     }
 
     /** Marca el tutorial como visto (local + Firestore). */

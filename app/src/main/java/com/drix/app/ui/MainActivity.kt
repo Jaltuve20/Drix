@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(s)
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT))
         DrixPrefs.init(this)
+        AuthRepo.init(this)
         com.drix.app.data.DrixStats.init(this)
         setContent {
             MaterialTheme(colorScheme = lightColorScheme(
@@ -109,6 +110,8 @@ fun DrixRoot() {
 @Composable
 fun DrixApp(profile: Profile) {
     var tab by remember { mutableIntStateOf(0) }
+    var showAdmin by remember { mutableStateOf(false) }
+    if (showAdmin && profile.isAdmin) { AdminScreen { showAdmin = false }; return }
     Scaffold(
         containerColor = Fog,
         contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
@@ -134,7 +137,7 @@ fun DrixApp(profile: Profile) {
                 1 -> ParamsScreen()
                 2 -> ZonesScreen()
                 3 -> ExtrasScreen()
-                else -> ProfileScreen(profile)
+                else -> ProfileScreen(profile) { showAdmin = true }
             }
         }
     }
