@@ -37,6 +37,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(s)
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT))
         DrixPrefs.init(this)
+        com.drix.app.data.DrixStats.init(this)
         setContent {
             MaterialTheme(colorScheme = lightColorScheme(
                 primary = Yellow, onPrimary = Ink, secondary = Charcoal,
@@ -50,7 +51,7 @@ private data class Tab(val label: String, val icon: ImageVector)
 
 private val tabs = listOf(
     Tab("Inicio", Icons.Filled.Home), Tab("Parámetros", Icons.Filled.DirectionsCar),
-    Tab("Zonas", Icons.Filled.Map), Tab("Perfil", Icons.Filled.Person)
+    Tab("Zonas", Icons.Filled.Map), Tab("Extras", Icons.Filled.BarChart), Tab("Perfil", Icons.Filled.Person)
 )
 
 private sealed interface PState {
@@ -132,6 +133,7 @@ fun DrixApp(profile: Profile) {
                 0 -> HomeScreen { tab = it }
                 1 -> ParamsScreen()
                 2 -> ZonesScreen()
+                3 -> ExtrasScreen()
                 else -> ProfileScreen(profile)
             }
         }

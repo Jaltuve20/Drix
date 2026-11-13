@@ -494,8 +494,58 @@ fun ProfileScreen(profile: Profile) {
         }
         DebugCard()
         PillButton("Cerrar sesión", color = Charcoal) { AuthRepo.signOut() }
-        Text("Drix v1.5.2", fontSize = 12.sp, color = Muted)
+        Text("Drix v1.5.3", fontSize = 12.sp, color = Muted)
     }
+}
+
+/* ═════════════ EXTRAS (estadísticas de hoy) ═════════════ */
+
+@Composable
+fun ExtrasScreen() {
+    val days by DrixStats.days.collectAsStateWithLifecycle()
+    var key by remember { mutableStateOf(DrixStats.dayKey()) }
+    LaunchedEffect(Unit) { while (true) { delay(30_000); key = DrixStats.dayKey() } } // cambia solo a medianoche
+    val t = days[key] ?: DayStats()
+    var confirm by remember { mutableStateOf(false) }
+    val avg = if (t.orders > 0) t.fare / t.orders else 0f
+    val perKm = if (t.km > 0f) t.fare / t.km else 0f
+
+    Screen(hero = {
+        Brand(); Spacer(Modifier.height(20.dp))
+        HeroTitle("Tus extras", "Hoy", "Lo que Drix te ha aceptado desde las 00:00.")
+    }) {
+        DCard {
+            Text("Dinero de hoy", fontSize = 13.sp, color = Muted)
+            Text("S/ %.2f".format(t.fare), fontSize = 38.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Tile("Pedidos", t.orders.toString(), Modifier.weight(1f))
+                Tile("Km recorridos", "%.1f km".format(t.km), Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Tile("Promedio por pedido", "S/ %.2f".format(avg), Modifier.weight(1f))
+                Tile("Ganancia por km", "S/ %.2f".format(perKm), Modifier.weight(1f))
+            }
+        }
+        DCard {
+            Text("¿Cómo se calcula?", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Text(
+                "Cuenta cada pedido que Drix acepta. El dinero es la tarifa del pedido y los km suman recojo + viaje. " +
+                    "Son valores estimados: no descuentan comisión, combustible ni pedidos que se cancelen, y no incluyen los que aceptes tú a mano.",
+                fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 4.dp)
+            )
+            Spacer(Modifier.height(12.dp))
+            PillButton("Reiniciar contador de hoy", color = Charcoal) { confirm = true }
+        }
+    }
+    if (confirm) AlertDialog(
+        onDismissRequest = { confirm = false },
+        title = { Text("¿Reiniciar hoy?", fontWeight = FontWeight.Bold) },
+        text = { Text("Dinero, km y pedidos de hoy volverán a cero. No se puede deshacer.") },
+        confirmButton = { TextButton({ DrixStats.resetDay(key); confirm = false }) { Text("Sí, reiniciar", color = Ink, fontWeight = FontWeight.ExtraBold) } },
+        dismissButton = { TextButton({ confirm = false }) { Text("Cancelar", color = Muted) } }
+    )
 }
 
 /** Contador de vencimiento del acceso: meses · días · horas · min · seg. */

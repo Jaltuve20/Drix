@@ -12,6 +12,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.drix.app.core.*
 import com.drix.app.data.Config
 import com.drix.app.data.DrixPrefs
+import com.drix.app.data.DrixStats
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,10 +47,13 @@ class DrixAccessibilityService : AccessibilityService() {
     // Pedido aceptado en la lista: cuando se abra el detalle se pulsa «Aceptar» sin volver a evaluar
     private var armedSig = ""
     private var armedAt = 0L
+    private var armedOrder: Order? = null     // pedido de la lista que se aceptará en el detalle (para las estadísticas)
+    private var acceptingOrder: Order? = null // pedido que se está aceptando ahora
 
     override fun onServiceConnected() {
         instance = this
         DrixPrefs.init(this)
+        DrixStats.init(this)
         overlay = OverlayWidget(this)
         // Activar → aviso "esperando pedidos". Pausar → se quita el aviso y se cancelan clics pendientes.
         scope.launch {
@@ -169,7 +173,7 @@ class DrixAccessibilityService : AccessibilityService() {
             when (decision) {
                 is Decision.Accept -> {
                     if (sig == detailSig && now - detailAt < 12000) return // ya aceptado hace poco
-                    startAccept(cfg, sig, o?.fare)
+                    startAccept(cfg, sig, o ?: armedOrder)
                 }
                 is Decision.Reject -> {
                     overlay.show("❌ ${decision.why}", false)
@@ -197,7 +201,7 @@ class DrixAccessibilityService : AccessibilityService() {
                 is Decision.Accept -> {
                     if (listHandled(o.sig)) return
                     listPending = o.sig
-                    armedSig = o.sig; armedAt = now // el detalle que se abra a continuación se aceptará directamente
+                    armedSig = o.sig; armedAt = now; armedOrder = o // el detalle que se abra a continuación se aceptará directamente
                     val target = OrderParser.clickTarget(card.node)
                     val w = randomDelay(cfg)
                     handler.postDelayed({
@@ -219,8 +223,10 @@ class DrixAccessibilityService : AccessibilityService() {
 
     /* ───────────── Botón verde «Aceptar por …» con reintentos ───────────── */
 
-    private fun startAccept(cfg: Config, sig: String, fare: Float?) {
+    private fun startAccept(cfg: Config, sig: String, order: Order?) {
         accepting = true
+        acceptingOrder = order
+        val fare = order?.fare
         val w = randomDelay(cfg)
         overlay.show((if (fare != null) "✅ S/ %.1f · ".format(fare) else "✅ ") + "pulsando Aceptar en %d ms".format(w), true)
         handler.postDelayed({ tryAccept(sig, 0) }, w)
@@ -247,7 +253,15 @@ class DrixAccessibilityService : AccessibilityService() {
     private fun finishAccept(sig: String, ok: Boolean) {
         accepting = false
         detailSig = sig; detailAt = System.currentTimeMillis()
-        armedSig = ""
+        armedSig = ""; armedOrder = null
+        if (ok) {
+            // Estadísticas «Extras»: dinero = tarifa del pedido; km = recojo + viaje (estimado)
+            acceptingOrder?.let { o ->
+                val km = listOf(o.pickupKm, o.tripKm).filter { !it.isNaN() }.sum()
+                DrixStats.record(o.fare.takeIf { !it.isNaN() } ?: 0f, km, sig)
+            }
+        }
+        acceptingOrder = null
         if (ok) overlay.show("🟢 ¡Pedido aceptado!", true)
         else overlay.show("⚠️ No pude pulsar «Aceptar». Revisa Diagnóstico", false)
     }
@@ -255,7 +269,7 @@ class DrixAccessibilityService : AccessibilityService() {
     /** Botón "Refrescar" de Drix: reinicia el estado y recarga la lista de la app objetivo. */
     fun refresh(delayMs: Long = 0) {
         listPending = ""; listSig = ""; listAt = 0
-        detailSig = ""; detailAt = 0; armedSig = ""; accepting = false; ignoring = false
+        detailSig = ""; detailAt = 0; armedSig = ""; armedOrder = null; acceptingOrder = null; accepting = false; ignoring = false
         handler.removeCallbacksAndMessages(null); trailingScheduled = false
         handler.postDelayed({
             val root = rootInActiveWindow
