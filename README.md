@@ -1,4 +1,4 @@
-# Drix v1.0.0
+# Drix v1.1.0
 Proyecto completo (abre esta carpeta tal cual; no hace falta crear otro proyecto).
 
 ## Compilar sin Android Studio
@@ -8,4 +8,4 @@ Proyecto completo (abre esta carpeta tal cual; no hace falta crear otro proyecto
 
 ## Primer uso
 Abre Drix > "Elegir app instalada" > activa el interruptor > concede "Mostrar sobre otras apps" y Accesibilidad.
-Ajusta OrderParser.parse / findAccept según la pantalla real de la app elegida.
+Si el botón verde «Aceptar» no se pulsa, copia el texto de Extras > Diagnóstico para ajustar el lector.

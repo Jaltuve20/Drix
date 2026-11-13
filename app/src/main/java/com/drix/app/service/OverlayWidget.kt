@@ -30,7 +30,7 @@ class OverlayWidget(private val ctx: Context) {
         v.text = "Drix · $msg"
         v.background = GradientDrawable().apply {
             cornerRadius = 48f
-            setColor(when (ok) { true -> 0xFFBBF7D0.toInt(); false -> 0xFFFECACA.toInt(); else -> 0xFFFACC15.toInt() })
+            setColor(when (ok) { true -> 0xFFBBF7D0.toInt(); false -> 0xFFFECACA.toInt(); else -> 0xFFFFC299.toInt() })
         }
     }
 

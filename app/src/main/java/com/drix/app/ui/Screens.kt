@@ -1,41 +1,51 @@
 package com.drix.app.ui
 
+import android.Manifest
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
-import androidx.compose.foundation.Canvas
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.outlined.AddCircleOutline
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.NearMe
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.*
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.drix.app.data.*
-import android.content.pm.PackageManager
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.core.graphics.drawable.toBitmap
-import android.Manifest
-import com.drix.app.service.DrixAccessibilityService
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.drix.app.data.*
+import com.drix.app.service.DrixAccessibilityService
 import java.io.File
 import org.osmdroid.config.Configuration
 import org.osmdroid.events.MapEventsReceiver
@@ -47,71 +57,310 @@ import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 
+/* ═════════════ COMPONENTES BASE ═════════════ */
+
 @Composable
 fun DCard(mod: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) = Card(
-    modifier = mod.fillMaxWidth(), shape = RoundedCornerShape(18.dp),
+    modifier = mod.fillMaxWidth(), shape = RoundedCornerShape(22.dp),
     colors = CardDefaults.cardColors(containerColor = Color.White),
-    elevation = CardDefaults.cardElevation(2.dp)
-) { Column(Modifier.padding(16.dp), content = content) }
+    elevation = CardDefaults.cardElevation(1.dp)
+) { Column(Modifier.padding(18.dp), content = content) }
 
+/** Pantalla con cabecera naranja degradada (como la app de referencia) y contenido en tarjetas. */
 @Composable
-fun Page(title: String, content: @Composable ColumnScope.() -> Unit) = Column(
-    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
-    verticalArrangement = Arrangement.spacedBy(12.dp)
-) { Text(title, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Ink); content() }
-
-/* ───────────── INICIO ───────────── */
-@Composable
-fun HomeScreen() {
-    val ctx = LocalContext.current
-    val cfg by DrixPrefs.cfg.collectAsStateWithLifecycle()
-    val zones by DrixPrefs.zones.collectAsStateWithLifecycle()
-    var brush by remember { mutableStateOf("g") }
-
-    Page("Drix") {
-        DCard {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(14.dp).background(if (cfg.enabled) Color(0xFF22C55E) else Color(0xFFEF4444), RoundedCornerShape(50)))
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(if (cfg.enabled) "Automatización activa" else "Automatización pausada", fontWeight = FontWeight.Bold)
-                    Text("Acepta pedidos que cumplan tus filtros", fontSize = 12.sp, color = Color.Gray)
-                }
-                Switch(checked = cfg.enabled, onCheckedChange = { on ->
-                    if (!on || ctx.ensurePermissions()) DrixPrefs.update { it.copy(enabled = on) }
-                }, colors = SwitchDefaults.colors(checkedTrackColor = Color(0xFF22C55E)))
-            }
-        }
-        RefreshCard()
-        TargetAppCard()
-        DCard {
-            Text("Zonas GPS", fontWeight = FontWeight.Bold)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
-                listOf("g" to "🟢 Aceptar", "r" to "🔴 Rechazar", "e" to "🧽 Borrar").forEach { (k, l) ->
-                    FilterChip(selected = brush == k, onClick = { brush = k }, label = { Text(l) },
-                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = Yellow))
-                }
-            }
-            ZoneMap(zones, brush)
-            Text("Toca un distrito para marcarlo completo (verde = aceptar, rojo = rechazar; «Borrar» lo quita). Si hay distritos verdes, solo acepta pedidos cuyo recojo esté en ellos.",
-                fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(top = 6.dp))
-        }
-        DCard {
-            Text("Filtros rápidos", fontWeight = FontWeight.Bold)
-            Text("Precio mín/km: S/ %.2f".format(cfg.minPerKm), fontSize = 13.sp)
-            Slider(cfg.minPerKm, { v -> DrixPrefs.update { it.copy(minPerKm = (v * 10).toInt() / 10f) } }, valueRange = 0.5f..4f)
-            Text("Recojo máx: %.1f km".format(cfg.maxPickupKm), fontSize = 13.sp)
-            Slider(cfg.maxPickupKm, { v -> DrixPrefs.update { it.copy(maxPickupKm = (v * 10).toInt() / 10f) } }, valueRange = 0.3f..8f)
-        }
-        DebugCard()
+fun Screen(hero: @Composable ColumnScope.() -> Unit, body: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxSize().background(Fog).verticalScroll(rememberScrollState())) {
+        Column(
+            Modifier.fillMaxWidth()
+                .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
+                .background(Brush.linearGradient(listOf(OrangeLight, OrangeDeep)))
+                .statusBarsPadding()
+                .padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 28.dp),
+            content = hero
+        )
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp), content = body)
     }
 }
 
-/** Mapa real (OpenStreetMap). Toca para crear círculos de 150 m; "Borrar" quita el tocado. Requiere internet. */
 @Composable
-fun ZoneMap(zones: List<Zone>, brush: String) {
+fun Brand() = Row(verticalAlignment = Alignment.CenterVertically) {
+    Box(Modifier.size(34.dp).background(Color.White, RoundedCornerShape(10.dp)), Alignment.Center) {
+        Text("D", color = OrangeDeep, fontWeight = FontWeight.Black, fontSize = 20.sp)
+    }
+    Spacer(Modifier.width(10.dp))
+    Text("Drix", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
+}
+
+@Composable
+fun HeroTitle(line: String, chip: String? = null, sub: String? = null) {
+    Text(line, color = Color.White, fontSize = 30.sp, lineHeight = 36.sp, fontWeight = FontWeight.ExtraBold)
+    if (chip != null) Surface(color = Charcoal, shape = RoundedCornerShape(10.dp), modifier = Modifier.padding(top = 6.dp)) {
+        Text(chip, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
+    }
+    if (sub != null) Text(sub, color = Color.White.copy(alpha = .92f), fontSize = 14.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 10.dp))
+}
+
+@Composable
+fun PillButton(text: String, mod: Modifier = Modifier.fillMaxWidth(), color: Color = Orange, onClick: () -> Unit) =
+    Button(onClick, mod.height(52.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(color, Color.White)) {
+        Text(text, fontWeight = FontWeight.Bold)
+    }
+
+@Composable
+fun LabeledField(label: String, value: String, mod: Modifier = Modifier.fillMaxWidth(), decimal: Boolean = true, onChange: (String) -> Unit) {
+    Column(mod) {
+        Text(label, fontSize = 14.sp, color = Ink, modifier = Modifier.padding(bottom = 6.dp))
+        OutlinedTextField(
+            value, onChange, singleLine = true, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = if (decimal) KeyboardType.Decimal else KeyboardType.Number),
+            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Orange, cursorColor = Orange)
+        )
+    }
+}
+
+@Composable
+private fun Tile(label: String, value: String, mod: Modifier = Modifier) = Column(
+    mod.background(Fog, RoundedCornerShape(16.dp)).padding(14.dp)
+) {
+    Text(label, fontSize = 12.sp, color = Muted)
+    Text(value, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Ink, modifier = Modifier.padding(top = 2.dp))
+}
+
+private fun num(v: Float): String = java.math.BigDecimal(v.toString()).stripTrailingZeros().toPlainString()
+private fun String.asFloat(): Float? = trim().replace(',', '.').toFloatOrNull()
+
+/* ═════════════ INICIO ═════════════ */
+
+@Composable
+fun HomeScreen(onGo: (Int) -> Unit) {
     val ctx = LocalContext.current
-    val brushNow by rememberUpdatedState(brush)
+    val cfg by DrixPrefs.cfg.collectAsStateWithLifecycle()
+    val zones by DrixPrefs.zones.collectAsStateWithLifecycle()
+
+    Screen(hero = {
+        Brand(); Spacer(Modifier.height(20.dp))
+        HeroTitle("Drix trabaja bajo tus", "reglas")
+    }) {
+        DCard {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(14.dp).background(if (cfg.enabled) Go else Color(0xFFEF4444), CircleShape))
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(if (cfg.enabled) "Automatización activa" else "Automatización pausada", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text("Acepta pedidos que cumplan tus filtros", fontSize = 12.sp, color = Muted)
+                }
+                Switch(checked = cfg.enabled, onCheckedChange = { on ->
+                    if (!on || ctx.ensurePermissions()) DrixPrefs.update { it.copy(enabled = on) }
+                }, colors = SwitchDefaults.colors(checkedTrackColor = Go, checkedThumbColor = Color.White))
+            }
+        }
+        DCard {
+            Text("Tus parámetros actuales", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Tile("Recogida máx.", "${num(cfg.maxPickupKm)} km", Modifier.weight(1f))
+                Tile("Destino máx.", "${num(cfg.maxTripKm)} km", Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Tile("Precio por km", "S/ %.2f".format(cfg.minPerKm), Modifier.weight(1f))
+                Tile("Precio mínimo", "S/ %.2f".format(cfg.minFare), Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(14.dp))
+            PillButton("Editar parámetros") { onGo(1) }
+        }
+        DCard {
+            Text("Evita zonas que no te convienen", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            val blocked = zones.count { !it.accept }; val liked = zones.count { it.accept }
+            Text("$blocked bloqueadas · $liked preferidas", fontSize = 13.sp, color = Muted, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
+            PillButton("Abrir mapa de zonas", color = Charcoal) { onGo(2) }
+        }
+        RefreshCard()
+        TargetAppCard()
+    }
+}
+
+/* ═════════════ PARÁMETROS ═════════════ */
+
+@Composable
+fun ParamsScreen() {
+    val ctx = LocalContext.current
+    val cfg by DrixPrefs.cfg.collectAsStateWithLifecycle()
+    var pk by remember(cfg) { mutableStateOf(num(cfg.maxPickupKm)) }
+    var tr by remember(cfg) { mutableStateOf(num(cfg.maxTripKm)) }
+    var km by remember(cfg) { mutableStateOf("%.2f".format(cfg.minPerKm)) }
+    var fr by remember(cfg) { mutableStateOf(num(cfg.minFare)) }
+    var h1 by remember(cfg) { mutableStateOf(cfg.startHour.toString()) }
+    var h2 by remember(cfg) { mutableStateOf(cfg.endHour.toString()) }
+    var d1 by remember(cfg) { mutableStateOf(cfg.minDelayMs.toString()) }
+    var d2 by remember(cfg) { mutableStateOf(cfg.maxDelayMs.toString()) }
+
+    Screen(hero = {
+        Brand(); Spacer(Modifier.height(20.dp))
+        HeroTitle("Tus parámetros actuales", sub = "Configuración basada en tus preferencias guardadas.")
+    }) {
+        DCard {
+            LabeledField("Distancia máxima de recogida (km)", pk) { pk = it }
+            Spacer(Modifier.height(16.dp))
+            LabeledField("Distancia máxima de destino (km)", tr) { tr = it }
+            Spacer(Modifier.height(16.dp))
+            LabeledField("Precio por kilómetro (S/)", km) { km = it }
+            Spacer(Modifier.height(16.dp))
+            LabeledField("Precio mínimo (S/)", fr) { fr = it }
+        }
+        DCard {
+            Text("Horario y ritmo", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                LabeledField("Desde (h)", h1, Modifier.weight(1f), decimal = false) { h1 = it }
+                LabeledField("Hasta (h)", h2, Modifier.weight(1f), decimal = false) { h2 = it }
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                LabeledField("Retraso mín (ms)", d1, Modifier.weight(1f), decimal = false) { d1 = it }
+                LabeledField("Retraso máx (ms)", d2, Modifier.weight(1f), decimal = false) { d2 = it }
+            }
+            Text("Tiempo al azar entre ambos antes de pulsar Aceptar. Los pedidos caducan en segundos: no lo subas demasiado.",
+                fontSize = 11.sp, color = Muted, modifier = Modifier.padding(top = 6.dp))
+            Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Aceptar si no se identifica el distrito", Modifier.weight(1f), fontSize = 14.sp)
+                Switch(cfg.unknownOk, { v -> DrixPrefs.update { it.copy(unknownOk = v) } },
+                    colors = SwitchDefaults.colors(checkedTrackColor = Go, checkedThumbColor = Color.White))
+            }
+        }
+        PillButton("Guardar cambios") {
+            val lo = (d1.toIntOrNull() ?: cfg.minDelayMs).coerceIn(0, 5000)
+            val hi = (d2.toIntOrNull() ?: cfg.maxDelayMs).coerceIn(lo, 5000)
+            DrixPrefs.update {
+                it.copy(
+                    maxPickupKm = pk.asFloat() ?: it.maxPickupKm, maxTripKm = tr.asFloat() ?: it.maxTripKm,
+                    minPerKm = km.asFloat() ?: it.minPerKm, minFare = fr.asFloat() ?: it.minFare,
+                    startHour = h1.toIntOrNull()?.coerceIn(0, 23) ?: it.startHour,
+                    endHour = h2.toIntOrNull()?.coerceIn(0, 24) ?: it.endHour,
+                    minDelayMs = lo, maxDelayMs = hi
+                )
+            }
+            Toast.makeText(ctx, "Parámetros guardados", Toast.LENGTH_SHORT).show()
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+/* ═════════════ BLOQUEO DE ZONAS (MAPA) ═════════════ */
+
+enum class ZoneMode(val label: String) { Navigate("Navegar"), Create("Crear zona"), Delete("Eliminar zona") }
+
+@Composable
+fun ZonesScreen() {
+    val zones by DrixPrefs.zones.collectAsStateWithLifecycle()
+    var mode by remember { mutableStateOf(ZoneMode.Navigate) }
+    var prefer by remember { mutableStateOf(false) }
+    var searching by remember { mutableStateOf(false) }
+    var menu by remember { mutableStateOf(false) }
+    var fly by remember { mutableStateOf<Pair<District, Int>?>(null) }
+    var locate by remember { mutableIntStateOf(0) }
+
+    Column(Modifier.fillMaxSize()) {
+        Spacer(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(OrangeDeep))
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            ZoneMap(zones, mode, prefer, fly, locate, Modifier.fillMaxSize())
+
+            // Barra superior flotante
+            Row(
+                Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(16.dp), color = Color.White, shadowElevation = 6.dp) {
+                    Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(mode.label, Modifier.weight(1f), fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                        BadgedBox(badge = { if (zones.isNotEmpty()) Badge(containerColor = OrangeDeep) { Text("${zones.size}") } }) {
+                            Icon(Icons.Filled.LocationOn, null, tint = OrangeDeep)
+                        }
+                    }
+                }
+                Box {
+                    Surface(onClick = { menu = true }, modifier = Modifier.size(52.dp), shape = RoundedCornerShape(16.dp), color = Color.White, shadowElevation = 6.dp) {
+                        Box(contentAlignment = Alignment.Center) { Icon(Icons.Outlined.Tune, "Opciones", tint = Ink) }
+                    }
+                    DropdownMenu(menu, { menu = false }) {
+                        DropdownMenuItem(text = { Text("📍 Mi ubicación") }, onClick = { menu = false; locate++ })
+                        DropdownMenuItem(text = { Text("🗑 Borrar todas las zonas") }, onClick = { menu = false; DrixPrefs.setZones(emptyList()) })
+                    }
+                }
+            }
+
+            // Panel flotante de herramientas
+            Surface(Modifier.align(Alignment.CenterEnd).padding(end = 10.dp), shape = RoundedCornerShape(24.dp), color = Color.White, shadowElevation = 8.dp) {
+                Column(Modifier.padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    ToolBtn(Icons.Outlined.NearMe, "Navegar", mode == ZoneMode.Navigate) { mode = ZoneMode.Navigate }
+                    ToolBtn(Icons.Outlined.AddCircleOutline, "Crear", mode == ZoneMode.Create) { mode = ZoneMode.Create }
+                    ToolBtn(Icons.Outlined.Delete, "Eliminar", mode == ZoneMode.Delete) { mode = ZoneMode.Delete }
+                    ToolBtn(Icons.Outlined.Search, "Buscar", searching) { searching = true }
+                }
+            }
+
+            // Selector de tipo de zona al crear
+            if (mode == ZoneMode.Create) Surface(
+                Modifier.align(Alignment.BottomCenter).padding(16.dp), shape = RoundedCornerShape(50), color = Color.White, shadowElevation = 8.dp
+            ) {
+                Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Seg("🚫 Bloquear", !prefer) { prefer = false }
+                    Seg("✅ Preferir", prefer) { prefer = true }
+                }
+            }
+        }
+    }
+    if (searching) DistrictSearchDialog(zones, { searching = false }) { d -> fly = d to ((fly?.second ?: 0) + 1); searching = false }
+}
+
+@Composable
+private fun ToolBtn(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+    val c = if (selected) OrangeDeep else Color(0xFFA0A6AE)
+    Column(Modifier.width(68.dp).clickable(onClick = onClick).padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(icon, label, tint = c, modifier = Modifier.size(28.dp))
+        Text(label, fontSize = 11.sp, color = c, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.padding(top = 2.dp))
+    }
+}
+
+@Composable
+private fun Seg(text: String, selected: Boolean, onClick: () -> Unit) = Surface(
+    onClick = onClick, shape = RoundedCornerShape(50), color = if (selected) Orange else Color.Transparent
+) { Text(text, Modifier.padding(horizontal = 18.dp, vertical = 10.dp), color = if (selected) Color.White else Ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp) }
+
+@Composable
+private fun DistrictSearchDialog(zones: List<Zone>, onDismiss: () -> Unit, onPick: (District) -> Unit) {
+    var q by remember { mutableStateOf("") }
+    val shown = Districts.all.filter { Districts.norm(it.name).contains(Districts.norm(q)) }
+    AlertDialog(
+        onDismissRequest = onDismiss, containerColor = Color.White,
+        title = { Text("Buscar distrito") },
+        text = {
+            Column {
+                OutlinedTextField(q, { q = it }, singleLine = true, placeholder = { Text("Ej. Miraflores") }, shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Orange, cursorColor = Orange))
+                LazyColumn(Modifier.heightIn(max = 340.dp).padding(top = 8.dp)) {
+                    items(shown, key = { it.name }) { d ->
+                        val z = zones.firstOrNull { it.name == d.name }
+                        Row(Modifier.fillMaxWidth().clickable { onPick(d) }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(d.name, Modifier.weight(1f), fontWeight = FontWeight.Medium)
+                            if (z != null) Text(if (z.accept) "✅" else "🚫")
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onDismiss) { Text("Cerrar", color = OrangeDeep) } }
+    )
+}
+
+/** Mapa real (OpenStreetMap, sin API key). Dibuja cada distrito marcado como un círculo naranja. */
+@Composable
+fun ZoneMap(zones: List<Zone>, mode: ZoneMode, prefer: Boolean, fly: Pair<District, Int>?, locate: Int, modifier: Modifier = Modifier) {
+    val ctx = LocalContext.current
+    val modeNow by rememberUpdatedState(mode)
+    val preferNow by rememberUpdatedState(prefer)
     val map = remember {
         Configuration.getInstance().apply {
             load(ctx, ctx.getSharedPreferences("osm", 0))
@@ -120,17 +369,23 @@ fun ZoneMap(zones: List<Zone>, brush: String) {
         }
         MapView(ctx).apply {
             setTileSource(TileSourceFactory.MAPNIK); setMultiTouchControls(true)
-            controller.setZoom(15.0); controller.setCenter(GeoPoint(-12.0464, -77.0428)) // Lima
-            // Evita que el scroll de la pantalla robe los gestos del mapa
-            setOnTouchListener { v, _ -> v.parent.requestDisallowInterceptTouchEvent(true); false }
+            zoomController.setVisibility(org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER)
+            controller.setZoom(11.0); controller.setCenter(GeoPoint(-12.0464, -77.0428)) // Lima
             overlays.add(MapEventsOverlay(object : MapEventsReceiver {
                 override fun singleTapConfirmedHelper(p: GeoPoint): Boolean {
+                    val m = modeNow
+                    if (m == ZoneMode.Navigate) return false
                     val d = Districts.at(p.latitude, p.longitude)
                     if (d == null) { Toast.makeText(ctx, "Aquí no hay distrito de Lima/Callao", Toast.LENGTH_SHORT).show(); return true }
                     val cur = DrixPrefs.zones.value.filter { it.name != d.name }
-                    val b = brushNow
-                    DrixPrefs.setZones(if (b == "e") cur else cur + Zone(d.name, b == "g"))
-                    Toast.makeText(ctx, d.name + ": " + when (b) { "g" -> "verde (aceptar)"; "r" -> "rojo (rechazar)"; else -> "sin marcar" }, Toast.LENGTH_SHORT).show()
+                    if (m == ZoneMode.Delete) {
+                        DrixPrefs.setZones(cur)
+                        Toast.makeText(ctx, "${d.name}: sin marcar", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val acc = preferNow
+                        DrixPrefs.setZones(cur + Zone(d.name, acc))
+                        Toast.makeText(ctx, d.name + if (acc) ": preferido (aceptar)" else ": bloqueado", Toast.LENGTH_SHORT).show()
+                    }
                     return true
                 }
                 override fun longPressHelper(p: GeoPoint) = false
@@ -144,39 +399,46 @@ fun ZoneMap(zones: List<Zone>, brush: String) {
         me.myLocation?.let { map.controller.animateTo(it) }
     }
     val perm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { if (it) goMe() }
-    DisposableEffect(map) { map.onResume(); onDispose { map.onPause(); me.disableMyLocation() } }
-
-    Column {
-        AndroidView(
-            factory = { map }, modifier = Modifier.fillMaxWidth().height(320.dp).clip(RoundedCornerShape(12.dp)),
-            update = { m ->
-                m.overlays.removeAll { it is Polygon }
-                zones.forEach { z ->
-                    val d = Districts.all.firstOrNull { it.name == z.name } ?: return@forEach
-                    m.overlays.add(Polygon(m).apply {
-                        points = Polygon.pointsAsCircle(GeoPoint(d.lat, d.lon), d.r.toDouble())
-                        fillPaint.color = (if (z.accept) 0x5922C55E else 0x59EF4444).toInt()
-                        outlinePaint.color = (if (z.accept) 0xFF16A34A else 0xFFDC2626).toInt()
-                        outlinePaint.strokeWidth = 3f
-                        setOnClickListener { _, _, _ -> false } // deja pasar el toque al mapa
-                    })
-                }
-                m.invalidate()
-            }
-        )
-        OutlinedButton({
+    LaunchedEffect(locate) {
+        if (locate > 0) {
             if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) goMe()
             else perm.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-        }, Modifier.padding(top = 8.dp)) { Text("📍 Mi ubicación") }
+        }
     }
+    LaunchedEffect(fly) {
+        fly?.let { (d, _) -> map.controller.setZoom(12.5); map.controller.animateTo(GeoPoint(d.lat, d.lon)) }
+    }
+    DisposableEffect(map) { map.onResume(); onDispose { map.onPause(); me.disableMyLocation() } }
+
+    AndroidView(
+        factory = { map }, modifier = modifier,
+        update = { m ->
+            m.overlays.removeAll { it is Polygon }
+            zones.forEach { z ->
+                val d = Districts.all.firstOrNull { it.name == z.name } ?: return@forEach
+                m.overlays.add(Polygon(m).apply {
+                    points = Polygon.pointsAsCircle(GeoPoint(d.lat, d.lon), d.r.toDouble())
+                    fillPaint.color = (if (z.accept) 0x4022C55E else 0x40FF6B1A).toInt()
+                    outlinePaint.color = (if (z.accept) 0xFF16A34A else 0xFFE8541E).toInt()
+                    outlinePaint.strokeWidth = 5f
+                    setOnClickListener { _, _, _ -> false } // deja pasar el toque al mapa
+                })
+            }
+            m.invalidate()
+        }
+    )
 }
 
-/* ───────────── ESTADÍSTICAS ───────────── */
+/* ═════════════ EXTRAS (rendimiento + diagnóstico) ═════════════ */
+
 @Composable
-fun StatsScreen() = Page("Estadísticas") {
+fun ExtrasScreen() = Screen(hero = {
+    Brand(); Spacer(Modifier.height(20.dp))
+    HeroTitle("Tu rendimiento", "inteligente", sub = "Estadísticas de ejemplo y diagnóstico de lectura.")
+}) {
     val trips = listOf(8, 11, 7, 13, 15, 18, 10); val days = "LMXJVSD"
     DCard {
-        Text("Ganancias de la semana", fontSize = 13.sp, color = Color.Gray)
+        Text("Ganancias de la semana (ejemplo)", fontSize = 13.sp, color = Muted)
         Text("S/ 842.50", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold)
     }
     DCard {
@@ -184,8 +446,8 @@ fun StatsScreen() = Page("Estadísticas") {
         Row(Modifier.fillMaxWidth().height(170.dp).padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
             trips.forEachIndexed { i, n ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$n", fontSize = 10.sp, color = Color.Gray)
-                    Box(Modifier.width(28.dp).height((n * 6).dp).background(if (n == trips.max()) Yellow else Yellow.copy(.4f), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)))
+                    Text("$n", fontSize = 10.sp, color = Muted)
+                    Box(Modifier.width(28.dp).height((n * 6).dp).background(if (n == trips.max()) Orange else Orange.copy(.35f), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)))
                     Text("${days[i]}", fontSize = 11.sp)
                 }
             }
@@ -194,89 +456,40 @@ fun StatsScreen() = Page("Estadísticas") {
     DCard {
         Text("Rendimiento", fontWeight = FontWeight.Bold)
         Text("92% · Excelente", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF16A34A))
-        LinearProgressIndicator(progress = { .92f }, Modifier.fillMaxWidth().padding(top = 8.dp), color = Yellow)
+        LinearProgressIndicator(progress = { .92f }, Modifier.fillMaxWidth().padding(top = 8.dp).height(8.dp).clip(CircleShape), color = Orange, trackColor = Fog)
     }
+    DebugCard()
 }
 
-/* ───────────── CONFIGURACIÓN ───────────── */
-@Composable
-fun SettingsScreen() {
-    val cfg by DrixPrefs.cfg.collectAsStateWithLifecycle()
-    var km by remember(cfg) { mutableStateOf(cfg.minPerKm.toString()) }
-    var pk by remember(cfg) { mutableStateOf(cfg.maxPickupKm.toString()) }
-    var fr by remember(cfg) { mutableStateOf(cfg.minFare.toString()) }
-    var h1 by remember(cfg) { mutableStateOf(cfg.startHour.toString()) }
-    var h2 by remember(cfg) { mutableStateOf(cfg.endHour.toString()) }
-    var d1 by remember(cfg) { mutableStateOf(cfg.minDelayMs.toString()) }
-    var d2 by remember(cfg) { mutableStateOf(cfg.maxDelayMs.toString()) }
+/* ═════════════ PERFIL ═════════════ */
 
-    Page("Filtros de rentabilidad") {
-        DCard {
-            Field("Precio mínimo por km (S/)", km) { km = it }
-            Spacer(Modifier.height(8.dp)); Field("Distancia máx. de recojo (km)", pk) { pk = it }
-            Spacer(Modifier.height(8.dp)); Field("Tarifa mínima por viaje (S/)", fr) { fr = it }
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Field("Desde (h)", h1, Modifier.weight(1f)) { h1 = it }
-                Field("Hasta (h)", h2, Modifier.weight(1f)) { h2 = it }
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Field("Retraso mín (ms)", d1, Modifier.weight(1f)) { d1 = it }
-                Field("Retraso máx (ms)", d2, Modifier.weight(1f)) { d2 = it }
-            }
-            Text("Tiempo al azar entre ambos antes de pulsar Aceptar. Los pedidos caducan en segundos: no lo subas demasiado.",
-                fontSize = 11.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Aceptar si no se identifica el distrito", Modifier.weight(1f), fontSize = 13.sp)
-                Switch(cfg.unknownOk, { v -> DrixPrefs.update { it.copy(unknownOk = v) } })
-            }
-        }
-        Button({
-            val lo = (d1.toIntOrNull() ?: cfg.minDelayMs).coerceIn(0, 5000)
-            val hi = (d2.toIntOrNull() ?: cfg.maxDelayMs).coerceIn(lo, 5000)
-            DrixPrefs.update {
-                it.copy(minPerKm = km.toFloatOrNull() ?: it.minPerKm, maxPickupKm = pk.toFloatOrNull() ?: it.maxPickupKm,
-                    minFare = fr.toFloatOrNull() ?: it.minFare, startHour = h1.toIntOrNull()?.coerceIn(0, 23) ?: it.startHour,
-                    endHour = h2.toIntOrNull()?.coerceIn(0, 24) ?: it.endHour,
-                    minDelayMs = lo, maxDelayMs = hi)
-            }
-        }, Modifier.fillMaxWidth().height(52.dp), colors = ButtonDefaults.buttonColors(Yellow, Ink)) { Text("Guardar cambios", fontWeight = FontWeight.Bold) }
-        DCard { Text("Las zonas delimitadas se editan dibujando sobre el mapa en Inicio.", fontSize = 12.sp, color = Color.Gray) }
-    }
-}
-
-@Composable
-private fun Field(label: String, value: String, mod: Modifier = Modifier.fillMaxWidth(), onChange: (String) -> Unit) =
-    OutlinedTextField(value, onChange, label = { Text(label) }, singleLine = true, modifier = mod)
-
-/* ───────────── PERFIL Y AYUDA ───────────── */
 @Composable
 fun ProfileScreen() {
     val ctx = LocalContext.current
-    Page("Perfil y ayuda") {
+    Screen(hero = {
+        Brand(); Spacer(Modifier.height(20.dp))
+        HeroTitle("Perfil y", "ayuda")
+    }) {
         DCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(56.dp).background(Yellow, RoundedCornerShape(50)), Alignment.Center) { Text("CM", fontWeight = FontWeight.ExtraBold) }
-                Spacer(Modifier.width(12.dp))
-                Column { Text("Carlos Mendoza", fontWeight = FontWeight.Bold); Text("✔ Conductor verificado", fontSize = 12.sp, color = Color(0xFF16A34A)) }
+                Box(Modifier.size(56.dp).background(Orange, CircleShape), Alignment.Center) { Text("CM", color = Color.White, fontWeight = FontWeight.ExtraBold) }
+                Spacer(Modifier.width(14.dp))
+                Column { Text("Carlos Mendoza", fontWeight = FontWeight.Bold, fontSize = 16.sp); Text("✔ Conductor verificado", fontSize = 12.sp, color = Color(0xFF16A34A)) }
             }
         }
-        DCard { Text("Vehículo", fontWeight = FontWeight.Bold); Text("Moto lineal · Placa ABC-123", color = Color.Gray) }
-        Button({
+        DCard { Text("Vehículo", fontWeight = FontWeight.Bold); Text("Moto lineal · Placa ABC-123", color = Muted) }
+        PillButton("💬 Ayuda por WhatsApp", color = Go) {
             // Reemplaza 51999999999 por el número de soporte (formato internacional sin +)
             ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/51999999999?text=Hola%20Drix")))
-        }, Modifier.fillMaxWidth().height(52.dp), colors = ButtonDefaults.buttonColors(Color(0xFF22C55E), Color.White)) {
-            Text("💬 Ayuda por WhatsApp", fontWeight = FontWeight.Bold)
         }
-        Text("Drix v1.0.0", fontSize = 12.sp, color = Color.Gray)
+        Text("Drix v1.1.0", fontSize = 12.sp, color = Muted)
     }
 }
 
-/* ───────────── SELECTOR DE APP OBJETIVO ───────────── */
+/* ═════════════ SELECTOR DE APP OBJETIVO ═════════════ */
+
 data class AppItem(val label: String, val pkg: String)
 
-/** Tarjeta que muestra la app elegida y abre el selector. */
 @Composable
 fun TargetAppCard() {
     val ctx = LocalContext.current
@@ -286,16 +499,14 @@ fun TargetAppCard() {
         runCatching { ctx.packageManager.getApplicationInfo(cfg.targetPkg, 0).loadLabel(ctx.packageManager).toString() }.getOrNull()
     }
     DCard {
-        Text("App objetivo", fontWeight = FontWeight.Bold)
+        Text("App objetivo", fontWeight = FontWeight.Bold, fontSize = 16.sp)
         Text(label ?: "⚠️ No instalada", fontSize = 16.sp, modifier = Modifier.padding(top = 4.dp))
-        Text(cfg.targetPkg, fontSize = 11.sp, color = Color.Gray)
-        Button({ open = true }, Modifier.fillMaxWidth().padding(top = 8.dp),
-            colors = ButtonDefaults.buttonColors(Yellow, Ink)) { Text("Elegir app instalada", fontWeight = FontWeight.Bold) }
+        Text(cfg.targetPkg, fontSize = 11.sp, color = Muted)
+        PillButton("Elegir app instalada", Modifier.fillMaxWidth().padding(top = 12.dp), Charcoal) { open = true }
     }
     if (open) AppPickerDialog({ open = false }) { pkg -> DrixPrefs.update { it.copy(targetPkg = pkg) }; open = false }
 }
 
-/** Lista las apps con ícono de lanzador, con buscador. */
 @Composable
 fun AppPickerDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
     val ctx = LocalContext.current
@@ -313,60 +524,57 @@ fun AppPickerDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
         title = { Text("Elige la app a automatizar") },
         text = {
             Column {
-                OutlinedTextField(q, { q = it }, singleLine = true, label = { Text("Buscar (ej. indrive)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(q, { q = it }, singleLine = true, label = { Text("Buscar (ej. indrive)") }, shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Orange, cursorColor = Orange))
                 LazyColumn(Modifier.heightIn(max = 380.dp).padding(top = 8.dp)) {
                     items(shown, key = { it.pkg }) { a ->
                         val icon = remember(a.pkg) { runCatching { pm.getApplicationIcon(a.pkg).toBitmap(96, 96).asImageBitmap() }.getOrNull() }
                         Row(Modifier.fillMaxWidth().clickable { onPick(a.pkg) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             icon?.let { Image(it, null, Modifier.size(40.dp)) }
                             Spacer(Modifier.width(12.dp))
-                            Column { Text(a.label, fontWeight = FontWeight.SemiBold); Text(a.pkg, fontSize = 11.sp, color = Color.Gray) }
+                            Column { Text(a.label, fontWeight = FontWeight.SemiBold); Text(a.pkg, fontSize = 11.sp, color = Muted) }
                         }
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onDismiss) { Text("Cancelar") } }
+        confirmButton = { TextButton(onDismiss) { Text("Cancelar", color = OrangeDeep) } }
     )
 }
 
-/* ───────────── REFRESCAR + DIAGNÓSTICO ───────────── */
-/** Abre la app objetivo, sale del detalle y recarga la lista de pedidos. */
+/* ═════════════ REFRESCAR + DIAGNÓSTICO ═════════════ */
+
 @Composable
 fun RefreshCard() {
     val ctx = LocalContext.current
     val cfg by DrixPrefs.cfg.collectAsStateWithLifecycle()
     DCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Refrescar lista", fontWeight = FontWeight.Bold)
-                Text("Abre la app objetivo, cierra el detalle y recarga los pedidos", fontSize = 12.sp, color = Color.Gray)
+        Text("Refrescar lista", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Text("Abre la app objetivo, cierra el detalle y recarga los pedidos", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 2.dp, bottom = 12.dp))
+        PillButton("🔄 Refrescar") {
+            val svc = DrixAccessibilityService.instance
+            if (svc == null) Toast.makeText(ctx, "Activa Drix Automático en Accesibilidad", Toast.LENGTH_LONG).show()
+            else {
+                ctx.packageManager.getLaunchIntentForPackage(cfg.targetPkg)?.let { ctx.startActivity(it) }
+                svc.refresh(1500)
             }
-            Button({
-                val svc = DrixAccessibilityService.instance
-                if (svc == null) Toast.makeText(ctx, "Activa Drix Automático en Accesibilidad", Toast.LENGTH_LONG).show()
-                else {
-                    ctx.packageManager.getLaunchIntentForPackage(cfg.targetPkg)?.let { ctx.startActivity(it) }
-                    svc.refresh(1500)
-                }
-            }, colors = ButtonDefaults.buttonColors(Yellow, Ink)) { Text("🔄 Refrescar", fontWeight = FontWeight.Bold) }
         }
     }
 }
 
-/** Muestra los textos que el servicio lee de la app objetivo (para ajustar el lector). */
 @Composable
 fun DebugCard() {
     val ctx = LocalContext.current
     val dbg by DrixPrefs.debug.collectAsStateWithLifecycle()
     DCard {
-        Text("Diagnóstico", fontWeight = FontWeight.Bold)
-        Text("Última lectura de la app objetivo:", fontSize = 11.sp, color = Color.Gray)
+        Text("Diagnóstico", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Text("Última lectura de la app objetivo:", fontSize = 11.sp, color = Muted)
         Text(dbg.ifBlank { "— aún no hay lecturas —" }, fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
-        OutlinedButton({
-            (ctx.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+        PillButton("Copiar texto", Modifier.fillMaxWidth().padding(top = 12.dp), Charcoal) {
+            (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                 .setPrimaryClip(android.content.ClipData.newPlainText("drix", dbg))
             Toast.makeText(ctx, "Copiado", Toast.LENGTH_SHORT).show()
-        }, Modifier.padding(top = 8.dp)) { Text("Copiar texto") }
+        }
     }
 }

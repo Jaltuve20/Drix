@@ -71,7 +71,13 @@ object OrderParser {
     /** Devuelve el nodo encontrado por texto (o descripción); el servicio decide cómo pulsarlo. */
     fun findText(root: AccessibilityNodeInfo, s: String) = root.findAccessibilityNodeInfosByText(s).firstOrNull()
     fun clickTarget(card: AccessibilityNodeInfo) = findText(card, "Aceptar") ?: card
-    fun findAccept(root: AccessibilityNodeInfo) = findText(root, "Aceptar por") ?: findText(root, "Aceptar")
+    /** Botón verde del detalle: prioriza «Aceptar por …»; como alternativa, un texto corto que empiece por «Aceptar». */
+    fun findAccept(root: AccessibilityNodeInfo): AccessibilityNodeInfo? =
+        findText(root, "Aceptar por")
+            ?: root.findAccessibilityNodeInfosByText("Aceptar").firstOrNull {
+                val t = (it.text ?: it.contentDescription)?.toString().orEmpty()
+                t.startsWith("Aceptar", true) && t.length <= 30
+            }
 }
 
 object OrderEvaluator {
@@ -89,6 +95,7 @@ object OrderEvaluator {
             greens.isNotEmpty() && dn != null && dn !in greens -> Decision.Reject("Fuera de zona: $dn")
             o.fare < c.minFare -> Decision.Reject("Tarifa < S/ %.2f".format(c.minFare))
             o.pickupKm > c.maxPickupKm -> Decision.Reject("Recojo %.1f km > %.1f".format(o.pickupKm, c.maxPickupKm))
+            o.tripKm > c.maxTripKm -> Decision.Reject("Destino %.1f km > %.1f".format(o.tripKm, c.maxTripKm))
             o.perKm < c.minPerKm -> Decision.Reject("S/km %.2f < %.2f".format(o.perKm, c.minPerKm))
             else -> Decision.Accept
         }

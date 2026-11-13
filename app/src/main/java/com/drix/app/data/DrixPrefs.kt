@@ -9,6 +9,7 @@ data class Config(
     val minPerKm: Float = 1.2f,      // S/ por km mínimo
     val maxPickupKm: Float = 2.5f,   // distancia máx. de recojo
     val minFare: Float = 5f,         // tarifa mínima por viaje (S/)
+    val maxTripKm: Float = 25f,      // distancia máx. del viaje (destino)
     val startHour: Int = 6,          // horario de trabajo
     val endHour: Int = 23,
     val enabled: Boolean = false,    // automatización ON/OFF
@@ -35,10 +36,12 @@ object DrixPrefs {
         sp = ctx.applicationContext.getSharedPreferences("drix", Context.MODE_PRIVATE)
         val d = Config()
         _cfg.value = Config(
-            sp.getFloat("km", d.minPerKm), sp.getFloat("pick", d.maxPickupKm),
-            sp.getFloat("fare", d.minFare), sp.getInt("h1", d.startHour),
-            sp.getInt("h2", d.endHour), sp.getBoolean("on", false), sp.getString("pkg", d.targetPkg)!!,
-            sp.getInt("dmin", d.minDelayMs), sp.getInt("dmax", d.maxDelayMs), sp.getBoolean("unk", d.unknownOk)
+            minPerKm = sp.getFloat("km", d.minPerKm), maxPickupKm = sp.getFloat("pick", d.maxPickupKm),
+            minFare = sp.getFloat("fare", d.minFare), maxTripKm = sp.getFloat("trip", d.maxTripKm),
+            startHour = sp.getInt("h1", d.startHour), endHour = sp.getInt("h2", d.endHour),
+            enabled = sp.getBoolean("on", false), targetPkg = sp.getString("pkg", d.targetPkg)!!,
+            minDelayMs = sp.getInt("dmin", d.minDelayMs), maxDelayMs = sp.getInt("dmax", d.maxDelayMs),
+            unknownOk = sp.getBoolean("unk", d.unknownOk)
         )
         _zones.value = sp.getString("zones3", "")!!.split(";").mapNotNull {
             val p = it.split(":")
@@ -49,7 +52,7 @@ object DrixPrefs {
     fun update(t: (Config) -> Config) {
         val c = t(_cfg.value); _cfg.value = c
         sp.edit().putFloat("km", c.minPerKm).putFloat("pick", c.maxPickupKm)
-            .putFloat("fare", c.minFare).putInt("h1", c.startHour)
+            .putFloat("fare", c.minFare).putFloat("trip", c.maxTripKm).putInt("h1", c.startHour)
             .putInt("h2", c.endHour).putBoolean("on", c.enabled).putString("pkg", c.targetPkg)
             .putInt("dmin", c.minDelayMs).putInt("dmax", c.maxDelayMs).putBoolean("unk", c.unknownOk).apply()
     }
