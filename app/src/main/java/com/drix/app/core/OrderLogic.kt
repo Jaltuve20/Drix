@@ -42,7 +42,7 @@ object OrderParser {
 
     /** Tarjeta de la LISTA: 1ª tarifa = precio; 1ª distancia = recojo (A); 2ª = viaje. */
     fun parse(texts: List<String>): Order? {
-        val joined = texts.joinToString(" | ")
+        val joined = texts.joinToString(" | ").replace('\u00A0', ' ').replace('\u202F', ' ')
         val fare = FARE.find(joined)?.groupValues?.get(1)?.let(::num) ?: return null
         val d = distances(joined)
         if (d.size < 2) return null
@@ -50,9 +50,9 @@ object OrderParser {
     }
 
     /** Pantalla de DETALLE ("Aceptar por PEN6.50"): precio del botón; recojo = "~9,5 km" junto a S/x/km. */
-    fun isDetail(texts: List<String>) = texts.any { it.contains("Aceptar por", true) }
+    fun isDetail(texts: List<String>) = texts.any { it.replace('\u00A0', ' ').contains("Aceptar por", true) }
     fun parseDetail(texts: List<String>): Order? {
-        val joined = texts.joinToString(" | ")
+        val joined = texts.joinToString(" | ").replace('\u00A0', ' ').replace('\u202F', ' ')
         val fare = ACCEPT_FARE.find(joined)?.groupValues?.get(1)?.let(::num) ?: return null
         val all = distances(joined)
         val pickup = PERKM.find(joined)?.groupValues?.get(1)?.let(::num) ?: all.getOrNull(0) ?: Float.NaN
@@ -68,16 +68,28 @@ object OrderParser {
         return out
     }
 
-    /** Devuelve el nodo encontrado por texto (o descripción); el servicio decide cómo pulsarlo. */
-    fun findText(root: AccessibilityNodeInfo, s: String) = root.findAccessibilityNodeInfosByText(s).firstOrNull()
+    private fun norm(s: CharSequence?): String =
+        s?.toString()?.replace('\u00A0', ' ')?.replace('\u202F', ' ')?.trim().orEmpty()
+
+    /** Búsqueda propia por el árbol (la del sistema falla con espacios especiales o textos en contentDescription). */
+    fun findNode(n: AccessibilityNodeInfo, depth: Int = 0, pred: (String) -> Boolean): AccessibilityNodeInfo? {
+        val t = norm(n.text).ifEmpty { norm(n.contentDescription) }
+        if (t.isNotEmpty() && pred(t)) return n
+        if (depth > 25) return null
+        for (i in 0 until n.childCount) {
+            val c = n.getChild(i) ?: continue
+            findNode(c, depth + 1, pred)?.let { return it }
+        }
+        return null
+    }
+
+    fun findText(root: AccessibilityNodeInfo, s: String): AccessibilityNodeInfo? = findNode(root) { it.contains(s, true) }
     fun clickTarget(card: AccessibilityNodeInfo) = findText(card, "Aceptar") ?: card
-    /** Botón verde del detalle: prioriza «Aceptar por …»; como alternativa, un texto corto que empiece por «Aceptar». */
+
+    /** Botón verde del detalle: «Aceptar por …»; como alternativa, un texto corto que empiece por «Aceptar». */
     fun findAccept(root: AccessibilityNodeInfo): AccessibilityNodeInfo? =
-        findText(root, "Aceptar por")
-            ?: root.findAccessibilityNodeInfosByText("Aceptar").firstOrNull {
-                val t = (it.text ?: it.contentDescription)?.toString().orEmpty()
-                t.startsWith("Aceptar", true) && t.length <= 30
-            }
+        findNode(root) { it.startsWith("Aceptar por", true) }
+            ?: findNode(root) { it.startsWith("Aceptar", true) && it.length <= 30 }
 }
 
 object OrderEvaluator {

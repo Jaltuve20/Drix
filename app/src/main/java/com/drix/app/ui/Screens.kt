@@ -482,7 +482,7 @@ fun ProfileScreen() {
             // Reemplaza 51999999999 por el número de soporte (formato internacional sin +)
             ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/51999999999?text=Hola%20Drix")))
         }
-        Text("Drix v1.1.0", fontSize = 12.sp, color = Muted)
+        Text("Drix v1.2.0", fontSize = 12.sp, color = Muted)
     }
 }
 

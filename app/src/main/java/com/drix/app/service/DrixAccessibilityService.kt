@@ -73,7 +73,15 @@ class DrixAccessibilityService : AccessibilityService() {
             if (n.isClickable && !r.isEmpty && r.width() <= dm.widthPixels && r.height() <= dm.heightPixels * 0.22f) return r
             n = n.parent; hops++
         }
-        return Rect().also { raw.getBoundsInScreen(it) }
+        // Sin ancestro clicable: usa el primer nodo (él o un ancestro) con área visible
+        var m: AccessibilityNodeInfo? = raw
+        var up = 0
+        while (m != null && up < 4) {
+            val r = Rect(); m.getBoundsInScreen(r)
+            if (!r.isEmpty) return r
+            m = m.parent; up++
+        }
+        return Rect()
     }
 
     /** Toque físico (gesto) en el centro del botón. Es lo que funciona cuando ACTION_CLICK “dice” que sí pero la app lo ignora. */
