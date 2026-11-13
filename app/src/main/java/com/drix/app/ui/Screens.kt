@@ -50,6 +50,14 @@ import com.drix.app.auth.Profile
 import com.drix.app.data.*
 import com.drix.app.service.DrixAccessibilityService
 import java.io.File
+import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
+import java.util.Date
+import java.util.Locale
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import org.osmdroid.events.MapEventsReceiver
@@ -450,6 +458,7 @@ fun ProfileScreen(profile: Profile) {
                 }
             }
         }
+        profile.until?.let { SubscriptionCard(it) { whatsapp("Hola Drix, quiero renovar mi acceso.\nCorreo: $email") } }
         DCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Lock, null, tint = Amber, modifier = Modifier.size(18.dp))
@@ -468,6 +477,8 @@ fun ProfileScreen(profile: Profile) {
             PillButton("💬 Solicitar cambio de datos", color = Go) {
                 whatsapp("Hola Drix, quiero cambiar mis datos.\nCorreo: $email\nNombre actual: $name\nTeléfono actual: ${profile.phone.orEmpty()}\nCambio que necesito: ")
             }
+            Spacer(Modifier.height(10.dp))
+            PillButton("💬 Ayuda por WhatsApp", color = Go) { whatsapp("Hola Drix") }
         }
         DCard {
             Text("Seguridad", fontWeight = FontWeight.Bold, fontSize = 16.sp)
@@ -480,12 +491,56 @@ fun ProfileScreen(profile: Profile) {
                 }
             }
         }
-        PillButton("💬 Ayuda por WhatsApp", color = Go) { whatsapp("Hola Drix") }
         DebugCard()
         PillButton("Cerrar sesión", color = Charcoal) { AuthRepo.signOut() }
-        Text("Drix v1.5.0", fontSize = 12.sp, color = Muted)
+        Text("Drix v1.5.1", fontSize = 12.sp, color = Muted)
     }
 }
+
+/** Contador de vencimiento del acceso: meses · días · horas · min · seg. */
+@Composable
+fun SubscriptionCard(untilMs: Long, onRenew: () -> Unit) {
+    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { delay(1000); nowMs = System.currentTimeMillis() } }
+    val zone = ZoneId.systemDefault()
+    val now = LocalDateTime.ofInstant(Instant.ofEpochMilli(nowMs), zone)
+    val end = LocalDateTime.ofInstant(Instant.ofEpochMilli(untilMs), zone)
+    val expired = !end.isAfter(now)
+    val months = if (expired) 0 else ChronoUnit.MONTHS.between(now, end)
+    val a = now.plusMonths(months)
+    val days = if (expired) 0 else ChronoUnit.DAYS.between(a, end)
+    val b = a.plusDays(days)
+    val hours = if (expired) 0 else ChronoUnit.HOURS.between(b, end)
+    val c = b.plusHours(hours)
+    val mins = if (expired) 0 else ChronoUnit.MINUTES.between(c, end)
+    val secs = if (expired) 0 else ChronoUnit.SECONDS.between(c.plusMinutes(mins), end)
+    val soon = !expired && ChronoUnit.DAYS.between(now, end) < 7
+    val tone = if (expired || soon) Color(0xFFDC2626) else Ink
+    val date = remember(untilMs) { SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault()).format(Date(untilMs)) }
+    DCard {
+        Text(if (expired) "Tu cuenta venció" else "Tu cuenta vence en:", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = tone)
+        Spacer(Modifier.height(12.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CountTile(months, "Meses", tone, Modifier.weight(1f))
+            CountTile(days, "Días", tone, Modifier.weight(1f))
+            CountTile(hours, "Horas", tone, Modifier.weight(1f))
+            CountTile(mins, "Min", tone, Modifier.weight(1f))
+            CountTile(secs, "Seg", tone, Modifier.weight(1f))
+        }
+        Text("Vence el $date", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 10.dp))
+        if (expired || soon) {
+            Spacer(Modifier.height(12.dp))
+            PillButton("💬 Renovar por WhatsApp", color = Go, onClick = onRenew)
+        }
+    }
+}
+
+@Composable
+private fun CountTile(value: Long, label: String, color: Color, mod: Modifier) =
+    Column(mod.background(Fog, RoundedCornerShape(12.dp)).padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value.toString().padStart(2, '0'), fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = color)
+        Text(label, fontSize = 11.sp, color = Muted)
+    }
 
 /* ═════════════ SELECTOR DE APP OBJETIVO ═════════════ */
 

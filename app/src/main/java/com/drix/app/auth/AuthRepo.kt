@@ -27,7 +27,9 @@ import kotlin.coroutines.resumeWithException
  */
 data class Profile(
     val firstName: String? = null, val lastName: String? = null, val phone: String? = null,
-    val tutorialDone: Boolean = true
+    val tutorialDone: Boolean = true,
+    /** Fecha de vencimiento del acceso (ms desde 1970), o null si no vence. Viene de allowed/{correo}.until */
+    val until: Long? = null
 ) {
     val complete get() = !firstName.isNullOrBlank() && !lastName.isNullOrBlank() && !phone.isNullOrBlank()
     val fullName get() = listOfNotNull(firstName, lastName).joinToString(" ").trim()
@@ -105,7 +107,7 @@ object AuthRepo {
         if (!d.exists()) null else {
             val local = ctx.getSharedPreferences("drix_auth", Context.MODE_PRIVATE).getBoolean("tut_$uid", false)
             // Cuentas antiguas (sin el campo tutorialDone) cuentan como "tutorial ya visto": solo lo ven los nuevos.
-            Profile(d.getString("firstName"), d.getString("lastName"), d.getString("phone"), (d.getBoolean("tutorialDone") ?: true) || local)
+            Profile(d.getString("firstName"), d.getString("lastName"), d.getString("phone"), (d.getBoolean("tutorialDone") ?: true) || local, until?.toDate()?.time)
         }
     }
 
