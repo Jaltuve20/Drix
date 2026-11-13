@@ -48,6 +48,7 @@ import com.drix.app.auth.AuthRepo
 import com.drix.app.data.*
 import com.drix.app.service.DrixAccessibilityService
 import java.io.File
+import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -100,12 +101,12 @@ fun PillButton(text: String, mod: Modifier = Modifier.fillMaxWidth(), color: Col
     }
 
 @Composable
-fun LabeledField(label: String, value: String, mod: Modifier = Modifier.fillMaxWidth(), decimal: Boolean = true, onChange: (String) -> Unit) {
+fun LabeledField(label: String, value: String, mod: Modifier = Modifier.fillMaxWidth(), decimal: Boolean = true, keyboard: KeyboardType? = null, onChange: (String) -> Unit) {
     Column(mod) {
         Text(label, fontSize = 14.sp, color = Ink, modifier = Modifier.padding(bottom = 6.dp))
         OutlinedTextField(
             value, onChange, singleLine = true, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth(),
-            keyboardOptions = KeyboardOptions(keyboardType = if (decimal) KeyboardType.Decimal else KeyboardType.Number),
+            keyboardOptions = KeyboardOptions(keyboardType = keyboard ?: if (decimal) KeyboardType.Decimal else KeyboardType.Number),
             colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Yellow, cursorColor = Yellow)
         )
     }
@@ -421,46 +422,16 @@ fun ZoneMap(zones: List<Zone>, mode: ZoneMode, prefer: Boolean, fly: Pair<Distri
     )
 }
 
-/* ═════════════ EXTRAS (rendimiento + diagnóstico) ═════════════ */
-
-@Composable
-fun ExtrasScreen() = Screen(hero = {
-    Brand(); Spacer(Modifier.height(20.dp))
-    HeroTitle("Tu rendimiento", "inteligente", sub = "Estadísticas de ejemplo y diagnóstico de lectura.")
-}) {
-    val trips = listOf(8, 11, 7, 13, 15, 18, 10); val days = "LMXJVSD"
-    DCard {
-        Text("Ganancias de la semana (ejemplo)", fontSize = 13.sp, color = Muted)
-        Text("S/ 842.50", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold)
-    }
-    DCard {
-        Text("Viajes completados", fontWeight = FontWeight.Bold)
-        Row(Modifier.fillMaxWidth().height(170.dp).padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-            trips.forEachIndexed { i, n ->
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("$n", fontSize = 10.sp, color = Muted)
-                    Box(Modifier.width(28.dp).height((n * 6).dp).background(if (n == trips.max()) Yellow else Yellow.copy(.35f), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)))
-                    Text("${days[i]}", fontSize = 11.sp)
-                }
-            }
-        }
-    }
-    DCard {
-        Text("Rendimiento", fontWeight = FontWeight.Bold)
-        Text("92% · Excelente", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF16A34A))
-        LinearProgressIndicator(progress = { .92f }, Modifier.fillMaxWidth().padding(top = 8.dp).height(8.dp).clip(CircleShape), color = Yellow, trackColor = Fog)
-    }
-    DebugCard()
-}
-
 /* ═════════════ PERFIL ═════════════ */
 
 @Composable
 fun ProfileScreen() {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf(AuthRepo.user?.displayName.orEmpty()) }
     var email by remember { mutableStateOf(AuthRepo.user?.email.orEmpty()) }
     var phone by remember { mutableStateOf("") }
+    var saving by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         val u = AuthRepo.user ?: return@LaunchedEffect
         AuthRepo.reload()
@@ -481,23 +452,48 @@ fun ProfileScreen() {
                 Spacer(Modifier.width(14.dp))
                 Column {
                     Text(name.ifBlank { "Conductor Drix" }, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("✔ Sesión iniciada", fontSize = 12.sp, color = Color(0xFF16A34A))
+                    Text(email, fontSize = 12.sp, color = Muted)
                 }
             }
         }
         DCard {
             Text("Datos de la cuenta", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            Spacer(Modifier.height(10.dp))
-            Tile("Correo", email.ifBlank { "—" }, Modifier.fillMaxWidth())
-            Spacer(Modifier.height(10.dp))
-            Tile("Teléfono", phone.ifBlank { "—" }, Modifier.fillMaxWidth())
+            Spacer(Modifier.height(12.dp))
+            LabeledField("Nombre completo", name, keyboard = KeyboardType.Text) { name = it }
+            Spacer(Modifier.height(14.dp))
+            LabeledField("Teléfono", phone, keyboard = KeyboardType.Phone) { phone = it }
+            Spacer(Modifier.height(14.dp))
+            Tile("Correo (con él recuperas tu contraseña)", email.ifBlank { "—" }, Modifier.fillMaxWidth())
+            Spacer(Modifier.height(16.dp))
+            PillButton(if (saving) "Guardando…" else "Guardar datos") {
+                if (name.isBlank()) { Toast.makeText(ctx, "Escribe tu nombre", Toast.LENGTH_SHORT).show(); return@PillButton }
+                if (saving) return@PillButton
+                saving = true
+                scope.launch {
+                    AuthRepo.saveProfile(name, phone)
+                        .onSuccess { Toast.makeText(ctx, "Datos guardados", Toast.LENGTH_SHORT).show() }
+                        .onFailure { Toast.makeText(ctx, AuthRepo.message(it) ?: "No se pudo guardar", Toast.LENGTH_LONG).show() }
+                    saving = false
+                }
+            }
+        }
+        DCard {
+            Text("Seguridad", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text("Te enviamos un enlace a tu correo para cambiar la contraseña.", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 2.dp, bottom = 12.dp))
+            PillButton("Cambiar contraseña", color = Charcoal) {
+                scope.launch {
+                    AuthRepo.resetForCurrentUser()
+                        .onSuccess { Toast.makeText(ctx, "Enlace enviado a $email", Toast.LENGTH_LONG).show() }
+                        .onFailure { Toast.makeText(ctx, AuthRepo.message(it) ?: "No se pudo enviar", Toast.LENGTH_LONG).show() }
+                }
+            }
         }
         PillButton("💬 Ayuda por WhatsApp", color = Go) {
-            // Reemplaza 51999999999 por el número de soporte (formato internacional sin +)
-            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/51999999999?text=Hola%20Drix")))
+            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/51900385006?text=Hola%20Drix")))
         }
+        DebugCard()
         PillButton("Cerrar sesión", color = Charcoal) { AuthRepo.signOut() }
-        Text("Drix v1.3.0", fontSize = 12.sp, color = Muted)
+        Text("Drix v1.4.0", fontSize = 12.sp, color = Muted)
     }
 }
 

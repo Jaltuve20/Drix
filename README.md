@@ -1,4 +1,4 @@
-# Drix v1.3.0 · amarillo + login con Firebase
+# Drix v1.4.0 · amarillo + login con Firebase
 
 Proyecto Android completo (Kotlin + Jetpack Compose). Abre esta carpeta tal cual.
 
@@ -71,7 +71,7 @@ Lo nuevo en esta versión:
 ### 7. Probar
 1. Abre la app: verás el splash y luego **Iniciar sesión**.
 2. Toca **Regístrate** → llena nombre, correo, teléfono y contraseña → **Registrarse**.
-3. Entras a la app; en **Perfil** aparecen tu nombre, correo y teléfono. **Cerrar sesión** te devuelve al login.
+3. Entras a la app; en **Perfil** aparecen tu nombre, correo y teléfono y puedes **editarlos y guardarlos**. **Cambiar contraseña** te envía un enlace al correo. **Cerrar sesión** te devuelve al login.
 4. En Firebase → Authentication → Usuarios verás tu cuenta; en Firestore → `users` verás tu perfil.
 
 ---
@@ -93,4 +93,4 @@ Lo nuevo en esta versión:
 
 ## Primer uso de la automatización
 Abre Drix > Inicio > «Elegir app instalada» > activa el interruptor > concede «Mostrar sobre otras apps» y Accesibilidad.
-Si el botón verde «Aceptar» no se pulsa, copia el texto de Extras > Diagnóstico para ajustar el lector.
+Si el botón verde «Aceptar» no se pulsa, copia el texto de Perfil > Diagnóstico para ajustar el lector.

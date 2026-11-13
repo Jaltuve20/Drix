@@ -12,6 +12,7 @@ import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
 import com.google.firebase.auth.*
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -75,6 +76,32 @@ object AuthRepo {
         val d = FirebaseFirestore.getInstance().collection("users").document(uid).get().wait()
         Profile(d.getString("name"), d.getString("phone"))
     }.getOrDefault(Profile())
+
+    /** Crea el perfil en Firestore si no existe (p. ej. cuentas nuevas de Google). */
+    suspend fun ensureProfile() {
+        runCatching {
+            val u = user ?: return
+            val ref = FirebaseFirestore.getInstance().collection("users").document(u.uid)
+            if (!ref.get().wait().exists()) {
+                ref.set(mapOf("name" to u.displayName.orEmpty(), "email" to u.email.orEmpty(), "phone" to ""), SetOptions.merge()).wait()
+            }
+        }
+    }
+
+    /** Guarda nombre y teléfono (Auth + Firestore). */
+    suspend fun saveProfile(name: String, phone: String): Result<Unit> = runCatching {
+        val u = user ?: error("No hay sesión iniciada.")
+        u.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(name.trim()).build()).wait()
+        FirebaseFirestore.getInstance().collection("users").document(u.uid)
+            .set(mapOf("name" to name.trim(), "phone" to phone.trim(), "email" to u.email.orEmpty()), SetOptions.merge()).wait()
+        Unit
+    }
+
+    /** Envía el enlace para cambiar la contraseña al correo de la cuenta actual. */
+    suspend fun resetForCurrentUser(): Result<Unit> {
+        val mail = user?.email ?: return Result.failure(IllegalStateException("Tu cuenta no tiene correo."))
+        return reset(mail)
+    }
 
     fun signOut() = auth.signOut()
 

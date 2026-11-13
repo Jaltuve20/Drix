@@ -45,7 +45,7 @@ private data class Tab(val label: String, val icon: ImageVector)
 
 private val tabs = listOf(
     Tab("Inicio", Icons.Filled.Home), Tab("Parámetros", Icons.Filled.DirectionsCar),
-    Tab("Zonas", Icons.Filled.Map), Tab("Extras", Icons.Filled.AutoAwesome), Tab("Perfil", Icons.Filled.Person)
+    Tab("Zonas", Icons.Filled.Map), Tab("Perfil", Icons.Filled.Person)
 )
 
 /** Flujo principal: splash → (sin sesión) login / registro → (con sesión) app. */
@@ -55,6 +55,7 @@ fun DrixRoot() {
     var user by remember { mutableStateOf(AuthRepo.user) }
     DisposableEffect(Unit) { val off = AuthRepo.listen { user = it }; onDispose { off() } }
     LaunchedEffect(Unit) { delay(1300); splash = false }
+    LaunchedEffect(user?.uid) { if (user != null) AuthRepo.ensureProfile() }
     when {
         splash -> SplashScreen()
         user == null -> AuthFlow()
@@ -89,7 +90,6 @@ fun DrixApp() {
                 0 -> HomeScreen { tab = it }
                 1 -> ParamsScreen()
                 2 -> ZonesScreen()
-                3 -> ExtrasScreen()
                 else -> ProfileScreen()
             }
         }
