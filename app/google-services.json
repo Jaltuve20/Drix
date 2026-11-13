@@ -12,7 +12,20 @@
           "package_name": "com.drix.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "311816484063-a56hvtjnpduqoomfiul2q9dnpkudhniv.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.drix.app",
+            "certificate_hash": "8994d8c6436284dffb063ae14fa587f1998a64fb"
+          }
+        },
+        {
+          "client_id": "311816484063-nn87aupu6oeq8q0vl20re2aj9e5l6m5t.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDdDipYQmJI5EESoXgd6r01bPlJ-b6d1KU"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "311816484063-nn87aupu6oeq8q0vl20re2aj9e5l6m5t.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
