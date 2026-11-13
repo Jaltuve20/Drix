@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.NearMe
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Tune
@@ -45,6 +46,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.drix.app.auth.AuthRepo
+import com.drix.app.auth.Profile
 import com.drix.app.data.*
 import com.drix.app.service.DrixAccessibilityService
 import java.io.File
@@ -425,23 +427,15 @@ fun ZoneMap(zones: List<Zone>, mode: ZoneMode, prefer: Boolean, fly: Pair<Distri
 /* ═════════════ PERFIL ═════════════ */
 
 @Composable
-fun ProfileScreen() {
+fun ProfileScreen(profile: Profile) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf(AuthRepo.user?.displayName.orEmpty()) }
-    var email by remember { mutableStateOf(AuthRepo.user?.email.orEmpty()) }
-    var phone by remember { mutableStateOf("") }
-    var saving by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        val u = AuthRepo.user ?: return@LaunchedEffect
-        AuthRepo.reload()
-        val p = AuthRepo.profile(u.uid)
-        name = AuthRepo.user?.displayName.orEmpty().ifBlank { p.name.orEmpty() }
-        email = AuthRepo.user?.email.orEmpty()
-        phone = p.phone.orEmpty()
-    }
+    val email = AuthRepo.user?.email.orEmpty()
+    val name = profile.fullName
     val initials = name.split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }
         .ifEmpty { email.take(1).uppercase() }
+    fun whatsapp(text: String) = ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/51900385006?text=" + Uri.encode(text))))
+
     Screen(hero = {
         Brand(); Spacer(Modifier.height(20.dp))
         HeroTitle("Tu cuenta", "Drix")
@@ -457,24 +451,22 @@ fun ProfileScreen() {
             }
         }
         DCard {
-            Text("Datos de la cuenta", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            Spacer(Modifier.height(12.dp))
-            LabeledField("Nombre completo", name, keyboard = KeyboardType.Text) { name = it }
-            Spacer(Modifier.height(14.dp))
-            LabeledField("Teléfono", phone, keyboard = KeyboardType.Phone) { phone = it }
-            Spacer(Modifier.height(14.dp))
-            Tile("Correo (con él recuperas tu contraseña)", email.ifBlank { "—" }, Modifier.fillMaxWidth())
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Lock, null, tint = Amber, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Datos de la cuenta", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            }
+            Text("Los registraste una sola vez y no se pueden editar desde la app.", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 2.dp, bottom = 12.dp))
+            Tile("Nombres", profile.firstName.orEmpty(), Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            Tile("Apellidos", profile.lastName.orEmpty(), Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            Tile("Teléfono", prettyPhone(profile.phone.orEmpty()), Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            Tile("Correo", email.ifBlank { "—" }, Modifier.fillMaxWidth())
             Spacer(Modifier.height(16.dp))
-            PillButton(if (saving) "Guardando…" else "Guardar datos") {
-                if (name.isBlank()) { Toast.makeText(ctx, "Escribe tu nombre", Toast.LENGTH_SHORT).show(); return@PillButton }
-                if (saving) return@PillButton
-                saving = true
-                scope.launch {
-                    AuthRepo.saveProfile(name, phone)
-                        .onSuccess { Toast.makeText(ctx, "Datos guardados", Toast.LENGTH_SHORT).show() }
-                        .onFailure { Toast.makeText(ctx, AuthRepo.message(it) ?: "No se pudo guardar", Toast.LENGTH_LONG).show() }
-                    saving = false
-                }
+            PillButton("💬 Solicitar cambio de datos", color = Go) {
+                whatsapp("Hola Drix, quiero cambiar mis datos.\nCorreo: $email\nNombre actual: $name\nTeléfono actual: ${profile.phone.orEmpty()}\nCambio que necesito: ")
             }
         }
         DCard {
@@ -488,12 +480,10 @@ fun ProfileScreen() {
                 }
             }
         }
-        PillButton("💬 Ayuda por WhatsApp", color = Go) {
-            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/51900385006?text=Hola%20Drix")))
-        }
+        PillButton("💬 Ayuda por WhatsApp", color = Go) { whatsapp("Hola Drix") }
         DebugCard()
         PillButton("Cerrar sesión", color = Charcoal) { AuthRepo.signOut() }
-        Text("Drix v1.4.0", fontSize = 12.sp, color = Muted)
+        Text("Drix v1.5.0", fontSize = 12.sp, color = Muted)
     }
 }
 

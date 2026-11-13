@@ -160,7 +160,8 @@ fun LoginScreen(onSignUp: () -> Unit) {
 @Composable
 fun SignUpScreen(onLogin: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var name by remember { mutableStateOf("") }
+    var first by remember { mutableStateOf("") }
+    var last by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var pass by remember { mutableStateOf("") }
@@ -169,11 +170,14 @@ fun SignUpScreen(onLogin: () -> Unit) {
     var note by remember { mutableStateOf<String?>(null) }
 
     AuthPage("Crear Cuenta", "Únete a Drix y empieza a ganar") {
-        AuthField(name, { name = it }, "Nombre completo", Icons.Outlined.Person)
+        AuthField(first, { first = it }, "Nombres", Icons.Outlined.Person)
+        Spacer(Modifier.height(12.dp))
+        AuthField(last, { last = it }, "Apellidos", Icons.Outlined.Person)
         Spacer(Modifier.height(12.dp))
         AuthField(email, { email = it }, "Correo electrónico", Icons.Outlined.Email, KeyboardType.Email)
         Spacer(Modifier.height(12.dp))
-        AuthField(phone, { phone = it }, "Teléfono", Icons.Outlined.Phone, KeyboardType.Phone)
+        AuthField(phone, { phone = it }, "Celular (ej. 987654321)", Icons.Outlined.Phone, KeyboardType.Phone)
+        LockNote()
         Spacer(Modifier.height(12.dp))
         AuthField(pass, { pass = it }, "Contraseña (mín. 6 caracteres)", Icons.Outlined.Lock, password = true)
         Spacer(Modifier.height(12.dp))
@@ -181,16 +185,17 @@ fun SignUpScreen(onLogin: () -> Unit) {
         Spacer(Modifier.height(20.dp))
         MainButton("Registrarse", loading) {
             note = when {
-                name.isBlank() -> "Escribe tu nombre."
+                !validName(first) -> "Escribe tus nombres (solo letras)."
+                !validName(last) -> "Escribe tus apellidos (solo letras)."
                 !Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches() -> "Escribe un correo válido."
-                phone.filter { it.isDigit() }.length < 7 -> "Escribe un teléfono válido."
+                normalizePhone(phone) == null -> "Escribe un celular válido (9 dígitos, ej. 987654321)."
                 pass.length < 6 -> "La contraseña debe tener al menos 6 caracteres."
                 pass != pass2 -> "Las contraseñas no coinciden."
                 else -> null
             }
             if (note == null) {
                 loading = true
-                scope.launch { AuthRepo.signUp(name, email, phone, pass).onFailure { note = AuthRepo.message(it) }; loading = false }
+                scope.launch { AuthRepo.signUp(cleanName(first), cleanName(last), email, normalizePhone(phone)!!, pass).onFailure { note = AuthRepo.message(it) }; loading = false }
             }
         }
         Note(note, true)
@@ -206,3 +211,98 @@ fun AuthFlow() {
     var signup by remember { mutableStateOf(false) }
     if (signup) SignUpScreen { signup = false } else LoginScreen { signup = true }
 }
+
+/* ═════════ DATOS DEL PERFIL (validación) ═════════ */
+
+private val NAME_RX = Regex("^[\\p{L}][\\p{L} '\\-]{1,39}$")
+fun validName(s: String) = NAME_RX.matches(s.trim())
+fun cleanName(s: String) = s.trim().split(Regex("\\s+")).joinToString(" ") { w -> w.lowercase().replaceFirstChar { it.uppercase() } }
+
+/** Celular peruano de 9 dígitos (9XXXXXXXX) → +51…; o número internacional con "+". Devuelve null si no es válido. */
+fun normalizePhone(raw: String): String? {
+    val plus = raw.trim().startsWith("+")
+    val d = raw.filter { it.isDigit() }
+    return when {
+        !plus && d.length == 9 && d.startsWith("9") -> "+51$d"
+        !plus && d.length == 11 && d.startsWith("51") -> "+$d"
+        plus && d.length in 9..15 -> "+$d"
+        else -> null
+    }
+}
+fun prettyPhone(p: String) = if (p.startsWith("+51") && p.length == 12) "+51 ${p.substring(3, 6)} ${p.substring(6, 9)} ${p.substring(9)}" else p
+
+@Composable
+private fun LockNote() = Row(
+    Modifier.fillMaxWidth().padding(top = 14.dp).background(Color(0xFFFFF7DB), RoundedCornerShape(12.dp)).padding(12.dp),
+    verticalAlignment = Alignment.CenterVertically
+) {
+    Icon(Icons.Outlined.Lock, null, tint = Amber, modifier = Modifier.size(18.dp))
+    Spacer(Modifier.width(10.dp))
+    Text("Tus nombres y tu teléfono no se podrán cambiar después. Si necesitas corregirlos, será por WhatsApp.", fontSize = 12.sp, color = Ink)
+}
+
+/* ═════════ COMPLETAR REGISTRO (cuentas de Google / sin perfil) ═════════ */
+
+@Composable
+fun CompleteProfileScreen(email: String) {
+    val scope = rememberCoroutineScope()
+    var first by remember { mutableStateOf("") }
+    var last by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var loading by remember { mutableStateOf(false) }
+    var note by remember { mutableStateOf<String?>(null) }
+    var confirm by remember { mutableStateOf(false) }
+
+    AuthPage("Completa tu registro", "Un último paso para activar tu cuenta") {
+        if (email.isNotBlank()) Text(email, fontSize = 12.sp, color = Muted, modifier = Modifier.padding(bottom = 14.dp))
+        AuthField(first, { first = it }, "Nombres", Icons.Outlined.Person)
+        Spacer(Modifier.height(12.dp))
+        AuthField(last, { last = it }, "Apellidos", Icons.Outlined.Person)
+        Spacer(Modifier.height(12.dp))
+        AuthField(phone, { phone = it }, "Celular (ej. 987654321)", Icons.Outlined.Phone, KeyboardType.Phone)
+        LockNote()
+        Spacer(Modifier.height(20.dp))
+        MainButton("Continuar", loading) {
+            note = when {
+                !validName(first) -> "Escribe tus nombres (solo letras)."
+                !validName(last) -> "Escribe tus apellidos (solo letras)."
+                normalizePhone(phone) == null -> "Escribe un celular válido (9 dígitos, ej. 987654321)."
+                else -> null
+            }
+            if (note == null) confirm = true
+        }
+        Note(note, true)
+        Text("Usar otra cuenta", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink,
+            modifier = Modifier.padding(top = 18.dp).clickable { AuthRepo.signOut() }.padding(8.dp))
+    }
+    if (confirm) AlertDialog(
+        onDismissRequest = { confirm = false }, containerColor = Color.White,
+        title = { Text("¿Son correctos tus datos?", fontWeight = FontWeight.ExtraBold) },
+        text = {
+            Column {
+                Text("${cleanName(first)} ${cleanName(last)}", fontWeight = FontWeight.Bold)
+                Text(prettyPhone(normalizePhone(phone).orEmpty()), color = Ink)
+                Text("No podrás cambiarlos desde la app.", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 8.dp))
+            }
+        },
+        confirmButton = {
+            TextButton({
+                confirm = false; loading = true
+                scope.launch {
+                    AuthRepo.createProfile(cleanName(first), cleanName(last), normalizePhone(phone)!!)
+                        .onSuccess { AuthRepo.version.value++ }
+                        .onFailure { note = AuthRepo.message(it) }
+                    loading = false
+                }
+            }) { Text("Sí, guardar", fontWeight = FontWeight.ExtraBold, color = Ink) }
+        },
+        dismissButton = { TextButton({ confirm = false }) { Text("Corregir", color = Muted) } }
+    )
+}
+
+@Composable
+fun ProfileLoadErrorScreen(msg: String, onRetry: () -> Unit, onSignOut: () -> Unit) =
+    AuthPage("No pudimos cargar tu perfil", msg) {
+        MainButton("Reintentar", false, onRetry)
+        TextButton(onSignOut, Modifier.padding(top = 10.dp)) { Text("Cerrar sesión", color = Ink) }
+    }

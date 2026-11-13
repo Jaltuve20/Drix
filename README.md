@@ -1,4 +1,12 @@
-# Drix v1.4.0 · amarillo + login con Firebase
+# Drix v1.5.0
+
+**Novedades 1.5.0**
+- **Aviso flotante nuevo** (tarjeta oscura con logo y estado en color). Desaparece al pausar la automatización y al salir de la app de pedidos.
+- **Icono de la app** = tu logo (adaptativo, también en iconos temáticos de Android 13+).
+- **Registro**: nombres + apellidos + celular. Si entran con Google (o su cuenta no tiene perfil) se les pide completar los datos antes de usar la app; luego **ya no se pueden cambiar** (lo exigen las reglas de Firestore → **vuelve a publicarlas**, paso 5). Cambios solo por WhatsApp.
+- **Tutorial de bienvenida** (parámetros y zonas) que ven **solo las cuentas nuevas**, una vez.
+
+# (versión anterior) amarillo + login con Firebase
 
 Proyecto Android completo (Kotlin + Jetpack Compose). Abre esta carpeta tal cual.
 
@@ -50,13 +58,32 @@ Lo nuevo en esta versión:
    rules_version = '2';
    service cloud.firestore {
      match /databases/{database}/documents {
+
+       function validName(s) { return s is string && s.size() >= 2 && s.size() <= 60; }
+       function validData(d) {
+         return d.keys().hasOnly(['firstName', 'lastName', 'name', 'phone', 'email', 'tutorialDone', 'createdAt'])
+           && validName(d.firstName) && validName(d.lastName)
+           && d.phone is string && d.phone.matches('^\+[0-9]{9,15}$');
+       }
+       function complete(d) {
+         return d.get('firstName', '') != '' && d.get('lastName', '') != '' && d.get('phone', '') != '';
+       }
+
        match /users/{uid} {
-         allow read, write: if request.auth != null && request.auth.uid == uid;
+         allow read: if request.auth != null && request.auth.uid == uid;
+         allow create: if request.auth != null && request.auth.uid == uid && validData(request.resource.data);
+         // Nombres y teléfono se pueden escribir UNA vez (mientras el perfil está incompleto).
+         // Después solo se permite marcar el tutorial como visto. Cambios de datos: por WhatsApp (consola de Firebase).
+         allow update: if request.auth != null && request.auth.uid == uid && (
+             (!complete(resource.data) && validData(request.resource.data))
+             || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['tutorialDone'])
+                 && request.resource.data.tutorialDone == true));
+         allow delete: if false;
        }
      }
    }
    ```
-   (Cada usuario solo puede leer/escribir su propio perfil.)
+   (Cada usuario solo lee su propio perfil. **Nombres y teléfono se guardan una vez y ya no se pueden cambiar desde la app**; si alguien pide un cambio por WhatsApp, edítalo tú en Firestore → users → su documento. Este mismo texto está en `firestore.rules`.)
 
 > Si te saltas el paso 5, el registro funciona igual, pero el teléfono no se guardará.
 

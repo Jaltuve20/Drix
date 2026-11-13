@@ -11,19 +11,35 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
 import com.google.firebase.auth.*
+import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/** Perfil guardado en Firestore (users/{uid}). */
-data class Profile(val name: String? = null, val phone: String? = null)
+/**
+ * Perfil guardado en Firestore (users/{uid}). Nombres y teléfono se piden UNA vez y quedan BLOQUEADOS:
+ * las reglas de Firestore (firestore.rules) impiden modificarlos desde la app. Cambios → por WhatsApp.
+ */
+data class Profile(
+    val firstName: String? = null, val lastName: String? = null, val phone: String? = null,
+    val tutorialDone: Boolean = true
+) {
+    val complete get() = !firstName.isNullOrBlank() && !lastName.isNullOrBlank() && !phone.isNullOrBlank()
+    val fullName get() = listOfNotNull(firstName, lastName).joinToString(" ").trim()
+}
 
-/** Todo el acceso a Firebase (Auth + Firestore) en un solo lugar. */
 object AuthRepo {
     private val auth get() = FirebaseAuth.getInstance()
     val user: FirebaseUser? get() = auth.currentUser
+
+    /** true mientras se crea una cuenta (evita mostrar el formulario de perfil por un instante). */
+    val busy = MutableStateFlow(false)
+    /** Súbelo para volver a cargar el perfil desde Firestore. */
+    val version = MutableStateFlow(0)
 
     private suspend fun <T> Task<T>.wait(): T = suspendCancellableCoroutine { c ->
         addOnSuccessListener { c.resume(it) }
@@ -40,17 +56,14 @@ object AuthRepo {
     suspend fun signIn(email: String, pass: String): Result<Unit> =
         runCatching { auth.signInWithEmailAndPassword(email.trim(), pass).wait(); Unit }
 
-    suspend fun signUp(name: String, email: String, phone: String, pass: String): Result<Unit> = runCatching {
-        val res = auth.createUserWithEmailAndPassword(email.trim(), pass).wait()
-        val u = res.user ?: return@runCatching
-        u.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(name.trim()).build()).wait()
-        // El teléfono y el nombre también van a Firestore; si Firestore no está activado, la cuenta se crea igual.
-        runCatching {
-            FirebaseFirestore.getInstance().collection("users").document(u.uid)
-                .set(mapOf("name" to name.trim(), "phone" to phone.trim(), "email" to email.trim())).wait()
-        }
-        u.reload().wait()
-        Unit
+    suspend fun signUp(first: String, last: String, email: String, phone: String, pass: String): Result<Unit> = runCatching {
+        busy.value = true
+        try {
+            val u = auth.createUserWithEmailAndPassword(email.trim(), pass).wait().user ?: return@runCatching
+            // Si Firestore falla, la cuenta ya existe: al entrar, la app volverá a pedir estos datos.
+            createProfile(first, last, phone)
+            u.reload().wait()
+        } finally { busy.value = false; version.value++ }
     }
 
     suspend fun reset(email: String): Result<Unit> =
@@ -72,29 +85,35 @@ object AuthRepo {
 
     suspend fun reload() { runCatching { user?.reload()?.wait() } }
 
-    suspend fun profile(uid: String): Profile = runCatching {
+    /** Carga el perfil. Éxito con null = la cuenta aún no tiene perfil (hay que pedir los datos). */
+    suspend fun loadProfile(ctx: Context, uid: String): Result<Profile?> = runCatching {
         val d = FirebaseFirestore.getInstance().collection("users").document(uid).get().wait()
-        Profile(d.getString("name"), d.getString("phone"))
-    }.getOrDefault(Profile())
-
-    /** Crea el perfil en Firestore si no existe (p. ej. cuentas nuevas de Google). */
-    suspend fun ensureProfile() {
-        runCatching {
-            val u = user ?: return
-            val ref = FirebaseFirestore.getInstance().collection("users").document(u.uid)
-            if (!ref.get().wait().exists()) {
-                ref.set(mapOf("name" to u.displayName.orEmpty(), "email" to u.email.orEmpty(), "phone" to ""), SetOptions.merge()).wait()
-            }
+        if (!d.exists()) null else {
+            val local = ctx.getSharedPreferences("drix_auth", Context.MODE_PRIVATE).getBoolean("tut_$uid", false)
+            // Cuentas antiguas (sin el campo tutorialDone) cuentan como "tutorial ya visto": solo lo ven los nuevos.
+            Profile(d.getString("firstName"), d.getString("lastName"), d.getString("phone"), (d.getBoolean("tutorialDone") ?: true) || local)
         }
     }
 
-    /** Guarda nombre y teléfono (Auth + Firestore). */
-    suspend fun saveProfile(name: String, phone: String): Result<Unit> = runCatching {
+    /** Guarda nombres + teléfono. Solo funciona mientras el perfil esté incompleto (lo exigen las reglas). */
+    suspend fun createProfile(first: String, last: String, phone: String): Result<Unit> = runCatching {
         val u = user ?: error("No hay sesión iniciada.")
-        u.updateProfile(UserProfileChangeRequest.Builder().setDisplayName(name.trim()).build()).wait()
-        FirebaseFirestore.getInstance().collection("users").document(u.uid)
-            .set(mapOf("name" to name.trim(), "phone" to phone.trim(), "email" to u.email.orEmpty()), SetOptions.merge()).wait()
+        val ref = FirebaseFirestore.getInstance().collection("users").document(u.uid)
+        val existed = ref.get().wait().exists()
+        val data = mutableMapOf<String, Any>(
+            "firstName" to first, "lastName" to last, "name" to "$first $last", "phone" to phone, "email" to u.email.orEmpty()
+        )
+        if (!existed) { data["tutorialDone"] = false; data["createdAt"] = FieldValue.serverTimestamp() } // nuevo → verá el tutorial
+        ref.set(data, SetOptions.merge()).wait()
+        runCatching { u.updateProfile(UserProfileChangeRequest.Builder().setDisplayName("$first $last").build()).wait() }
         Unit
+    }
+
+    /** Marca el tutorial como visto (local + Firestore). */
+    suspend fun markTutorialDone(ctx: Context) {
+        val uid = user?.uid ?: return
+        ctx.getSharedPreferences("drix_auth", Context.MODE_PRIVATE).edit().putBoolean("tut_$uid", true).apply()
+        runCatching { FirebaseFirestore.getInstance().collection("users").document(uid).update("tutorialDone", true).wait() }
     }
 
     /** Envía el enlace para cambiar la contraseña al correo de la cuenta actual. */
@@ -113,6 +132,8 @@ object AuthRepo {
         is FirebaseAuthInvalidUserException -> "No existe una cuenta con ese correo."
         is FirebaseAuthInvalidCredentialsException -> "Correo o contraseña incorrectos."
         is FirebaseNetworkException -> "Sin conexión a internet."
+        is FirebaseFirestoreException -> if (e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED)
+            "Firestore rechazó la operación: revisa las reglas (README, paso 5)." else "No pudimos conectar con la base de datos."
         is FirebaseTooManyRequestsException -> "Demasiados intentos. Espera un momento."
         else -> e.message ?: "Ocurrió un error. Inténtalo de nuevo."
     }

@@ -9,7 +9,7 @@ android {
     compileSdk = 35
     defaultConfig {
         applicationId = "com.drix.app"; minSdk = 26; targetSdk = 35
-        versionCode = 5; versionName = "1.4.0"
+        versionCode = 6; versionName = "1.5.0"
     }
     // Llave fija para que el SHA-1 no cambie entre compilaciones (necesario para "Continuar con Google")
     signingConfigs {

@@ -1,6 +1,9 @@
 package com.drix.app.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.drix.app.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,11 +46,9 @@ fun DGlyph(modifier: Modifier = Modifier, color: Color = Ink) {
     }
 }
 
-/** Cuadro amarillo con la D (icono de la app). */
+/** Icono real de la app (cuadro amarillo con la D). */
 @Composable
-fun LogoMark(size: Dp, modifier: Modifier = Modifier) = Box(
-    modifier.size(size).background(Yellow, RoundedCornerShape(size * 0.24f)), Alignment.Center
-) { DGlyph(Modifier.height(size * 0.56f)) }
+fun LogoMark(size: Dp, modifier: Modifier = Modifier) = Image(painterResource(R.drawable.drix_logo), "Drix", modifier.size(size))
 
 /** Marca «Drix» donde la D es la D del logo: [D-logo]rix. */
 @Composable

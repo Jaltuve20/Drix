@@ -17,7 +17,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.drix.app.auth.AuthRepo
+import com.drix.app.auth.Profile
+import kotlinx.coroutines.launch
 import com.drix.app.data.DrixPrefs
 import kotlinx.coroutines.delay
 
@@ -48,23 +52,47 @@ private val tabs = listOf(
     Tab("Zonas", Icons.Filled.Map), Tab("Perfil", Icons.Filled.Person)
 )
 
-/** Flujo principal: splash → (sin sesión) login / registro → (con sesión) app. */
+private sealed interface PState {
+    data object Loading : PState
+    data class Loaded(val p: Profile?) : PState
+    data class Failed(val msg: String) : PState
+}
+
+/** Flujo: splash → login/registro → (perfil incompleto) completar datos → (cuenta nueva) tutorial → app. */
 @Composable
 fun DrixRoot() {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
     var splash by remember { mutableStateOf(true) }
     var user by remember { mutableStateOf(AuthRepo.user) }
+    var ps by remember { mutableStateOf<PState>(PState.Loading) }
+    val busy by AuthRepo.busy.collectAsStateWithLifecycle()
+    val version by AuthRepo.version.collectAsStateWithLifecycle()
     DisposableEffect(Unit) { val off = AuthRepo.listen { user = it }; onDispose { off() } }
     LaunchedEffect(Unit) { delay(1300); splash = false }
-    LaunchedEffect(user?.uid) { if (user != null) AuthRepo.ensureProfile() }
+    LaunchedEffect(user?.uid, version) {
+        ps = PState.Loading
+        val u = user ?: return@LaunchedEffect
+        ps = AuthRepo.loadProfile(ctx, u.uid).fold({ PState.Loaded(it) }, { PState.Failed(AuthRepo.message(it) ?: "Revisa tu conexión.") })
+    }
+    val st = ps
+    val p = (st as? PState.Loaded)?.p
     when {
         splash -> SplashScreen()
         user == null -> AuthFlow()
-        else -> DrixApp()
+        busy || st is PState.Loading -> SplashScreen()
+        st is PState.Failed -> ProfileLoadErrorScreen(st.msg, { AuthRepo.version.value++ }, { AuthRepo.signOut() })
+        p == null || !p.complete -> CompleteProfileScreen(user?.email.orEmpty())
+        !p.tutorialDone -> TutorialScreen(p.firstName.orEmpty()) {
+            ps = PState.Loaded(p.copy(tutorialDone = true))
+            scope.launch { AuthRepo.markTutorialDone(ctx) }
+        }
+        else -> DrixApp(p)
     }
 }
 
 @Composable
-fun DrixApp() {
+fun DrixApp(profile: Profile) {
     var tab by remember { mutableIntStateOf(0) }
     Scaffold(
         containerColor = Fog,
@@ -90,7 +118,7 @@ fun DrixApp() {
                 0 -> HomeScreen { tab = it }
                 1 -> ParamsScreen()
                 2 -> ZonesScreen()
-                else -> ProfileScreen()
+                else -> ProfileScreen(profile)
             }
         }
     }

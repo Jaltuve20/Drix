@@ -13,12 +13,20 @@ import com.drix.app.core.*
 import com.drix.app.data.Config
 import com.drix.app.data.DrixPrefs
 import kotlin.random.Random
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 class DrixAccessibilityService : AccessibilityService() {
     companion object { @Volatile var instance: DrixAccessibilityService? = null }
 
     private lateinit var overlay: OverlayWidget
     private val handler = Handler(Looper.getMainLooper())
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var lastRun = 0L
     private var trailingScheduled = false
@@ -43,7 +51,17 @@ class DrixAccessibilityService : AccessibilityService() {
         instance = this
         DrixPrefs.init(this)
         overlay = OverlayWidget(this)
-        overlay.show("Drix listo")
+        // Activar → aviso "esperando pedidos". Pausar → se quita el aviso y se cancelan clics pendientes.
+        scope.launch {
+            DrixPrefs.cfg.map { it.enabled }.distinctUntilChanged().collect { on ->
+                if (on) overlay.show("Esperando pedidos…")
+                else {
+                    handler.removeCallbacksAndMessages(null)
+                    accepting = false; ignoring = false; listPending = ""; trailingScheduled = false
+                    overlay.hide()
+                }
+            }
+        }
     }
     override fun onUnbind(intent: Intent?): Boolean { instance = null; return super.onUnbind(intent) }
 
@@ -102,7 +120,14 @@ class DrixAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
         val cfg = DrixPrefs.cfg.value
-        if (e == null || !cfg.enabled || e.packageName?.toString() != cfg.targetPkg) return
+        if (e == null || !cfg.enabled) return
+        val pkg = e.packageName?.toString()
+        if (pkg != cfg.targetPkg) {
+            // Al salir de la app objetivo se oculta el aviso (se ignoran barra de estado, teclado y Drix)
+            if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && pkg != null &&
+                pkg != packageName && pkg != "com.android.systemui" && !pkg.contains("inputmethod")) overlay.hide()
+            return
+        }
         val now = System.currentTimeMillis()
         if (now - lastRun < 400) {
             // Antes se DESCARTABA este evento: si era el que abría el detalle, el servicio ya no volvía a mirar y la pantalla se quedaba así.
@@ -249,5 +274,5 @@ class DrixAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() {}
-    override fun onDestroy() { instance = null; handler.removeCallbacksAndMessages(null); if (::overlay.isInitialized) overlay.hide(); super.onDestroy() }
+    override fun onDestroy() { scope.cancel(); instance = null; handler.removeCallbacksAndMessages(null); if (::overlay.isInitialized) overlay.hide(); super.onDestroy() }
 }
