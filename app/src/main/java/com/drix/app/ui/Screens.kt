@@ -44,6 +44,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.drix.app.auth.AuthRepo
 import com.drix.app.data.*
 import com.drix.app.service.DrixAccessibilityService
 import java.io.File
@@ -73,7 +74,7 @@ fun Screen(hero: @Composable ColumnScope.() -> Unit, body: @Composable ColumnSco
         Column(
             Modifier.fillMaxWidth()
                 .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
-                .background(Brush.linearGradient(listOf(OrangeLight, OrangeDeep)))
+                .background(Brush.linearGradient(listOf(YellowLight, YellowDeep)))
                 .statusBarsPadding()
                 .padding(start = 24.dp, end = 24.dp, top = 18.dp, bottom = 28.dp),
             content = hero
@@ -83,27 +84,18 @@ fun Screen(hero: @Composable ColumnScope.() -> Unit, body: @Composable ColumnSco
 }
 
 @Composable
-fun Brand() = Row(verticalAlignment = Alignment.CenterVertically) {
-    Box(Modifier.size(34.dp).background(Color.White, RoundedCornerShape(10.dp)), Alignment.Center) {
-        Text("D", color = OrangeDeep, fontWeight = FontWeight.Black, fontSize = 20.sp)
-    }
-    Spacer(Modifier.width(10.dp))
-    Text("Drix", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
-}
-
-@Composable
 fun HeroTitle(line: String, chip: String? = null, sub: String? = null) {
-    Text(line, color = Color.White, fontSize = 30.sp, lineHeight = 36.sp, fontWeight = FontWeight.ExtraBold)
-    if (chip != null) Surface(color = Charcoal, shape = RoundedCornerShape(10.dp), modifier = Modifier.padding(top = 6.dp)) {
-        Text(chip, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold,
+    Text(line, color = Ink, fontSize = 30.sp, lineHeight = 36.sp, fontWeight = FontWeight.ExtraBold)
+    if (chip != null) Surface(color = Ink, shape = RoundedCornerShape(10.dp), modifier = Modifier.padding(top = 6.dp)) {
+        Text(chip, color = Yellow, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
     }
-    if (sub != null) Text(sub, color = Color.White.copy(alpha = .92f), fontSize = 14.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 10.dp))
+    if (sub != null) Text(sub, color = Ink.copy(alpha = .75f), fontSize = 14.sp, lineHeight = 19.sp, modifier = Modifier.padding(top = 10.dp))
 }
 
 @Composable
-fun PillButton(text: String, mod: Modifier = Modifier.fillMaxWidth(), color: Color = Orange, onClick: () -> Unit) =
-    Button(onClick, mod.height(52.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(color, Color.White)) {
+fun PillButton(text: String, mod: Modifier = Modifier.fillMaxWidth(), color: Color = Yellow, onClick: () -> Unit) =
+    Button(onClick, mod.height(52.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(color, if (color == Yellow) Ink else Color.White)) {
         Text(text, fontWeight = FontWeight.Bold)
     }
 
@@ -114,7 +106,7 @@ fun LabeledField(label: String, value: String, mod: Modifier = Modifier.fillMaxW
         OutlinedTextField(
             value, onChange, singleLine = true, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth(),
             keyboardOptions = KeyboardOptions(keyboardType = if (decimal) KeyboardType.Decimal else KeyboardType.Number),
-            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Orange, cursorColor = Orange)
+            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Yellow, cursorColor = Yellow)
         )
     }
 }
@@ -262,7 +254,7 @@ fun ZonesScreen() {
     var locate by remember { mutableIntStateOf(0) }
 
     Column(Modifier.fillMaxSize()) {
-        Spacer(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(OrangeDeep))
+        Spacer(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(YellowDeep))
         Box(Modifier.weight(1f).fillMaxWidth()) {
             ZoneMap(zones, mode, prefer, fly, locate, Modifier.fillMaxSize())
 
@@ -274,8 +266,8 @@ fun ZonesScreen() {
                 Surface(Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(16.dp), color = Color.White, shadowElevation = 6.dp) {
                     Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(mode.label, Modifier.weight(1f), fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                        BadgedBox(badge = { if (zones.isNotEmpty()) Badge(containerColor = OrangeDeep) { Text("${zones.size}") } }) {
-                            Icon(Icons.Filled.LocationOn, null, tint = OrangeDeep)
+                        BadgedBox(badge = { if (zones.isNotEmpty()) Badge(containerColor = Ink, contentColor = Yellow) { Text("${zones.size}") } }) {
+                            Icon(Icons.Filled.LocationOn, null, tint = Ink)
                         }
                     }
                 }
@@ -316,7 +308,7 @@ fun ZonesScreen() {
 
 @Composable
 private fun ToolBtn(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
-    val c = if (selected) OrangeDeep else Color(0xFFA0A6AE)
+    val c = if (selected) Ink else Color(0xFFA0A6AE)
     Column(Modifier.width(68.dp).clickable(onClick = onClick).padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Icon(icon, label, tint = c, modifier = Modifier.size(28.dp))
         Text(label, fontSize = 11.sp, color = c, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, modifier = Modifier.padding(top = 2.dp))
@@ -325,8 +317,8 @@ private fun ToolBtn(icon: ImageVector, label: String, selected: Boolean, onClick
 
 @Composable
 private fun Seg(text: String, selected: Boolean, onClick: () -> Unit) = Surface(
-    onClick = onClick, shape = RoundedCornerShape(50), color = if (selected) Orange else Color.Transparent
-) { Text(text, Modifier.padding(horizontal = 18.dp, vertical = 10.dp), color = if (selected) Color.White else Ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp) }
+    onClick = onClick, shape = RoundedCornerShape(50), color = if (selected) Yellow else Color.Transparent
+) { Text(text, Modifier.padding(horizontal = 18.dp, vertical = 10.dp), color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp) }
 
 @Composable
 private fun DistrictSearchDialog(zones: List<Zone>, onDismiss: () -> Unit, onPick: (District) -> Unit) {
@@ -339,7 +331,7 @@ private fun DistrictSearchDialog(zones: List<Zone>, onDismiss: () -> Unit, onPic
             Column {
                 OutlinedTextField(q, { q = it }, singleLine = true, placeholder = { Text("Ej. Miraflores") }, shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Orange, cursorColor = Orange))
+                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Yellow, cursorColor = Yellow))
                 LazyColumn(Modifier.heightIn(max = 340.dp).padding(top = 8.dp)) {
                     items(shown, key = { it.name }) { d ->
                         val z = zones.firstOrNull { it.name == d.name }
@@ -351,7 +343,7 @@ private fun DistrictSearchDialog(zones: List<Zone>, onDismiss: () -> Unit, onPic
                 }
             }
         },
-        confirmButton = { TextButton(onDismiss) { Text("Cerrar", color = OrangeDeep) } }
+        confirmButton = { TextButton(onDismiss) { Text("Cerrar", color = Amber) } }
     )
 }
 
@@ -447,7 +439,7 @@ fun ExtrasScreen() = Screen(hero = {
             trips.forEachIndexed { i, n ->
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("$n", fontSize = 10.sp, color = Muted)
-                    Box(Modifier.width(28.dp).height((n * 6).dp).background(if (n == trips.max()) Orange else Orange.copy(.35f), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)))
+                    Box(Modifier.width(28.dp).height((n * 6).dp).background(if (n == trips.max()) Yellow else Yellow.copy(.35f), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)))
                     Text("${days[i]}", fontSize = 11.sp)
                 }
             }
@@ -456,7 +448,7 @@ fun ExtrasScreen() = Screen(hero = {
     DCard {
         Text("Rendimiento", fontWeight = FontWeight.Bold)
         Text("92% · Excelente", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF16A34A))
-        LinearProgressIndicator(progress = { .92f }, Modifier.fillMaxWidth().padding(top = 8.dp).height(8.dp).clip(CircleShape), color = Orange, trackColor = Fog)
+        LinearProgressIndicator(progress = { .92f }, Modifier.fillMaxWidth().padding(top = 8.dp).height(8.dp).clip(CircleShape), color = Yellow, trackColor = Fog)
     }
     DebugCard()
 }
@@ -466,23 +458,46 @@ fun ExtrasScreen() = Screen(hero = {
 @Composable
 fun ProfileScreen() {
     val ctx = LocalContext.current
+    var name by remember { mutableStateOf(AuthRepo.user?.displayName.orEmpty()) }
+    var email by remember { mutableStateOf(AuthRepo.user?.email.orEmpty()) }
+    var phone by remember { mutableStateOf("") }
+    LaunchedEffect(Unit) {
+        val u = AuthRepo.user ?: return@LaunchedEffect
+        AuthRepo.reload()
+        val p = AuthRepo.profile(u.uid)
+        name = AuthRepo.user?.displayName.orEmpty().ifBlank { p.name.orEmpty() }
+        email = AuthRepo.user?.email.orEmpty()
+        phone = p.phone.orEmpty()
+    }
+    val initials = name.split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }
+        .ifEmpty { email.take(1).uppercase() }
     Screen(hero = {
         Brand(); Spacer(Modifier.height(20.dp))
-        HeroTitle("Perfil y", "ayuda")
+        HeroTitle("Tu cuenta", "Drix")
     }) {
         DCard {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(56.dp).background(Orange, CircleShape), Alignment.Center) { Text("CM", color = Color.White, fontWeight = FontWeight.ExtraBold) }
+                Box(Modifier.size(60.dp).background(Yellow, CircleShape), Alignment.Center) { Text(initials, color = Ink, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp) }
                 Spacer(Modifier.width(14.dp))
-                Column { Text("Carlos Mendoza", fontWeight = FontWeight.Bold, fontSize = 16.sp); Text("✔ Conductor verificado", fontSize = 12.sp, color = Color(0xFF16A34A)) }
+                Column {
+                    Text(name.ifBlank { "Conductor Drix" }, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text("✔ Sesión iniciada", fontSize = 12.sp, color = Color(0xFF16A34A))
+                }
             }
         }
-        DCard { Text("Vehículo", fontWeight = FontWeight.Bold); Text("Moto lineal · Placa ABC-123", color = Muted) }
+        DCard {
+            Text("Datos de la cuenta", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Spacer(Modifier.height(10.dp))
+            Tile("Correo", email.ifBlank { "—" }, Modifier.fillMaxWidth())
+            Spacer(Modifier.height(10.dp))
+            Tile("Teléfono", phone.ifBlank { "—" }, Modifier.fillMaxWidth())
+        }
         PillButton("💬 Ayuda por WhatsApp", color = Go) {
             // Reemplaza 51999999999 por el número de soporte (formato internacional sin +)
             ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/51999999999?text=Hola%20Drix")))
         }
-        Text("Drix v1.2.0", fontSize = 12.sp, color = Muted)
+        PillButton("Cerrar sesión", color = Charcoal) { AuthRepo.signOut() }
+        Text("Drix v1.3.0", fontSize = 12.sp, color = Muted)
     }
 }
 
@@ -526,7 +541,7 @@ fun AppPickerDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
             Column {
                 OutlinedTextField(q, { q = it }, singleLine = true, label = { Text("Buscar (ej. indrive)") }, shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Orange, cursorColor = Orange))
+                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Yellow, cursorColor = Yellow))
                 LazyColumn(Modifier.heightIn(max = 380.dp).padding(top = 8.dp)) {
                     items(shown, key = { it.pkg }) { a ->
                         val icon = remember(a.pkg) { runCatching { pm.getApplicationIcon(a.pkg).toBitmap(96, 96).asImageBitmap() }.getOrNull() }
@@ -539,7 +554,7 @@ fun AppPickerDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
                 }
             }
         },
-        confirmButton = { TextButton(onDismiss) { Text("Cancelar", color = OrangeDeep) } }
+        confirmButton = { TextButton(onDismiss) { Text("Cancelar", color = Amber) } }
     )
 }
 
