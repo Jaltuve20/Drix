@@ -8,7 +8,32 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -40,10 +65,17 @@ class MainActivity : ComponentActivity() {
         AuthRepo.init(this)
         com.drix.app.data.DrixStats.init(this)
         setContent {
-            MaterialTheme(colorScheme = lightColorScheme(
-                primary = Yellow, onPrimary = Ink, secondary = Charcoal,
-                background = Fog, surface = Color.White, onSurface = Ink
-            )) { DrixRoot() }
+            MaterialTheme(
+                colorScheme = lightColorScheme(
+                    primary = Yellow, onPrimary = Ink, secondary = Charcoal,
+                    background = Fog, surface = Color.White, onSurface = Ink,
+                    surfaceTint = Color.Transparent, surfaceContainerHigh = Color.White, outline = Line
+                ),
+                shapes = Shapes(
+                    small = RoundedCornerShape(12.dp), medium = RoundedCornerShape(16.dp),
+                    large = RoundedCornerShape(24.dp), extraLarge = RoundedCornerShape(28.dp)
+                )
+            ) { DrixRoot() }
         }
     }
 }
@@ -106,19 +138,37 @@ fun DrixRoot() {
         AuthRepo.signOut()
     }
     val ex = expiredEmail
-    when {
-        splash -> SplashScreen()
-        user == null && ex != null -> ExpiredScreen(ex) { expiredEmail = null }
-        user == null -> AuthFlow()
-        busy || st is PState.Loading -> SplashScreen()
-        st is PState.Denied -> NoAccessScreen(user?.email.orEmpty(), st.expired, { AuthRepo.version.value++ }, { AuthRepo.signOut() })
-        st is PState.Failed -> ProfileLoadErrorScreen(st.msg, { AuthRepo.version.value++ }, { AuthRepo.signOut() })
-        p == null || !p.complete -> CompleteProfileScreen(user?.email.orEmpty())
-        !p.tutorialDone -> TutorialScreen(p.firstName.orEmpty()) {
-            ps = PState.Loaded(p.copy(tutorialDone = true))
-            scope.launch { AuthRepo.markTutorialDone(ctx) }
+    val stage = when {
+        splash -> "splash"
+        user == null && ex != null -> "expired"
+        user == null -> "auth"
+        busy || st is PState.Loading -> "splash"
+        st is PState.Denied -> "denied"
+        st is PState.Failed -> "failed"
+        p == null || !p.complete -> "complete"
+        !p.tutorialDone -> "tutorial"
+        else -> "app"
+    }
+    AnimatedContent(
+        targetState = stage,
+        transitionSpec = { fadeIn(tween(380)) togetherWith fadeOut(tween(260)) },
+        label = "root"
+    ) { s ->
+        when (s) {
+            "splash" -> SplashScreen()
+            "expired" -> ExpiredScreen(ex.orEmpty()) { expiredEmail = null }
+            "auth" -> AuthFlow()
+            "denied" -> NoAccessScreen(user?.email.orEmpty(), (st as? PState.Denied)?.expired ?: false, { AuthRepo.version.value++ }, { AuthRepo.signOut() })
+            "failed" -> ProfileLoadErrorScreen((st as? PState.Failed)?.msg.orEmpty(), { AuthRepo.version.value++ }, { AuthRepo.signOut() })
+            "complete" -> CompleteProfileScreen(user?.email.orEmpty())
+            "tutorial" -> p?.let { pr ->
+                TutorialScreen(pr.firstName.orEmpty()) {
+                    ps = PState.Loaded(pr.copy(tutorialDone = true))
+                    scope.launch { AuthRepo.markTutorialDone(ctx) }
+                }
+            }
+            else -> p?.let { DrixApp(it) }
         }
-        else -> DrixApp(p)
     }
 }
 
@@ -130,30 +180,62 @@ fun DrixApp(profile: Profile) {
     Scaffold(
         containerColor = Fog,
         contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
-        bottomBar = {
-            NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
-                tabs.forEachIndexed { i, t ->
-                    NavigationBarItem(
-                        selected = tab == i, onClick = { tab = i },
-                        icon = { Icon(t.icon, t.label) }, label = { Text(t.label, maxLines = 1) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = Ink, selectedTextColor = Ink,
-                            indicatorColor = Yellow,
-                            unselectedIconColor = Color(0xFF8B929B), unselectedTextColor = Color(0xFF8B929B)
-                        )
-                    )
+        bottomBar = { DrixNavBar(tab) { tab = it } }
+    ) { pad ->
+        Box(Modifier.padding(pad).fillMaxSize()) {
+            AnimatedContent(
+                targetState = tab,
+                transitionSpec = {
+                    val dir = if (targetState > initialState) 1 else -1
+                    (fadeIn(tween(300, delayMillis = 90)) + slideInHorizontally(tween(360, easing = FastOutSlowInEasing)) { it / 12 * dir }) togetherWith
+                        fadeOut(tween(120))
+                },
+                label = "tabs"
+            ) { t ->
+                when (t) {
+                    0 -> HomeScreen { tab = it }
+                    1 -> ParamsScreen()
+                    2 -> ZonesScreen()
+                    3 -> ExtrasScreen()
+                    else -> ProfileScreen(profile) { showAdmin = true }
                 }
             }
         }
-    ) { pad ->
-        Box(Modifier.padding(pad).fillMaxSize()) {
-            when (tab) {
-                0 -> HomeScreen { tab = it }
-                1 -> ParamsScreen()
-                2 -> ZonesScreen()
-                3 -> ExtrasScreen()
-                else -> ProfileScreen(profile) { showAdmin = true }
-            }
+    }
+}
+
+/** Barra inferior flotante: la pestaña activa se expande en una píldora amarilla con su nombre. */
+@Composable
+private fun DrixNavBar(selected: Int, onSelect: (Int) -> Unit) {
+    Surface(
+        color = Color.White, shadowElevation = 18.dp,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically
+        ) {
+            tabs.forEachIndexed { i, t -> NavItem(t, i == selected) { onSelect(i) } }
+        }
+    }
+}
+
+@Composable
+private fun NavItem(t: Tab, sel: Boolean, onClick: () -> Unit) {
+    val src = remember { MutableInteractionSource() }
+    val bg by animateColorAsState(if (sel) Yellow else Color.Transparent, tween(260), label = "nbg")
+    val tint by animateColorAsState(if (sel) Ink else Color(0xFF8B929B), tween(260), label = "ntint")
+    val iconScale by animateFloatAsState(if (sel) 1.12f else 1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow), label = "nis")
+    Row(
+        Modifier.pressScale(src, .92f).clip(RoundedCornerShape(18.dp)).background(bg)
+            .clickable(interactionSource = src, indication = LocalIndication.current, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .animateContentSize(spring(Spring.DampingRatioLowBouncy, Spring.StiffnessMediumLow)),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(t.icon, t.label, tint = tint, modifier = Modifier.size(24.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale })
+        AnimatedVisibility(sel, enter = expandHorizontally() + fadeIn(), exit = shrinkHorizontally() + fadeOut()) {
+            Text(t.label, Modifier.padding(start = 6.dp), color = tint, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
         }
     }
 }

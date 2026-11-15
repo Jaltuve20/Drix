@@ -1,6 +1,19 @@
 package com.drix.app.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlin.math.absoluteValue
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -78,57 +91,85 @@ fun TutorialScreen(name: String, onFinish: () -> Unit) {
     val pager = rememberPagerState(pageCount = { pages.size })
     val scope = rememberCoroutineScope()
     val last = pager.currentPage == pages.lastIndex
+    val progress by animateFloatAsState((pager.currentPage + 1f) / pages.size, tween(450), label = "prog")
 
     Column(Modifier.fillMaxSize().background(Color.White).systemBarsPadding()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("${pager.currentPage + 1} de ${pages.size}", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(start = 8.dp))
+            Text("${pager.currentPage + 1} de ${pages.size}", fontSize = 12.sp, color = Muted, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp))
             Spacer(Modifier.weight(1f))
             if (!last) TextButton(onFinish) { Text("Omitir", color = Muted) }
         }
-        HorizontalPager(pager, Modifier.weight(1f)) { i -> TutorialPage(pages[i]) }
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
-            repeat(pages.size) { i ->
-                val on = i == pager.currentPage
-                Box(Modifier.padding(3.dp).size(if (on) 22.dp else 8.dp, 8.dp).background(if (on) Yellow else Line, RoundedCornerShape(50)))
-            }
+        // barra de progreso que se llena al avanzar
+        Box(Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(5.dp).clip(RoundedCornerShape(50)).background(Fog)) {
+            Box(Modifier.fillMaxWidth(progress).fillMaxHeight().background(Brush.horizontalGradient(listOf(YellowLight, YellowDeep)), RoundedCornerShape(50)))
+        }
+        HorizontalPager(pager, Modifier.weight(1f)) { i ->
+            Box(Modifier.graphicsLayer {
+                val off = ((pager.currentPage - i) + pager.currentPageOffsetFraction).absoluteValue.coerceIn(0f, 1f)
+                alpha = 1f - off * .65f
+                val sc = 1f - off * .08f
+                scaleX = sc; scaleY = sc
+            }) { TutorialPage(pages[i]) }
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            repeat(pages.size) { i -> Dot(i == pager.currentPage) }
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 22.dp, vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             if (pager.currentPage > 0) OutlinedButton(
                 { scope.launch { pager.animateScrollToPage(pager.currentPage - 1) } },
-                Modifier.height(52.dp), shape = RoundedCornerShape(14.dp), border = BorderStroke(1.dp, Line)
-            ) { Text("Atrás", color = Ink) }
-            Button(
-                { if (last) onFinish() else scope.launch { pager.animateScrollToPage(pager.currentPage + 1) } },
-                Modifier.weight(1f).height(52.dp), shape = RoundedCornerShape(14.dp), colors = ButtonDefaults.buttonColors(Yellow, Ink)
-            ) { Text(if (last) "¡Empezar!" else "Siguiente", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp) }
+                Modifier.height(54.dp), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Line)
+            ) { Text("Atrás", color = Ink, fontWeight = FontWeight.SemiBold) }
+            PillButton(if (last) "¡Empezar!" else "Siguiente", Modifier.weight(1f)) {
+                if (last) onFinish() else scope.launch { pager.animateScrollToPage(pager.currentPage + 1) }
+            }
         }
     }
 }
 
 @Composable
+private fun Dot(on: Boolean) {
+    val w by animateDpAsState(if (on) 24.dp else 8.dp, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium), label = "dw")
+    val c by animateColorAsState(if (on) Yellow else Line, tween(250), label = "dc")
+    Box(Modifier.padding(3.dp).size(w, 8.dp).background(c, RoundedCornerShape(50)))
+}
+
+@Composable
 private fun TutorialPage(p: TPage) = Column(
-    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 10.dp),
+    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 14.dp),
     horizontalAlignment = Alignment.CenterHorizontally
 ) {
-    Box(Modifier.size(84.dp).background(Yellow, RoundedCornerShape(26.dp)), Alignment.Center) { Text(p.emoji, fontSize = 40.sp) }
-    Spacer(Modifier.height(18.dp))
-    Text(p.title, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Ink, textAlign = TextAlign.Center)
-    p.intro?.let { Text(it, fontSize = 15.sp, color = Muted, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp)) }
+    val shape = RoundedCornerShape(30.dp)
+    Box(
+        Modifier.popIn().bob(7.dp).size(92.dp)
+            .shadow(14.dp, shape, ambientColor = Yellow.copy(alpha = .5f), spotColor = YellowDeep.copy(alpha = .7f))
+            .clip(shape).background(Brush.linearGradient(listOf(YellowLight, YellowDeep))),
+        Alignment.Center
+    ) { Text(p.emoji, fontSize = 44.sp) }
+    Spacer(Modifier.height(20.dp))
+    Text(p.title, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Ink, textAlign = TextAlign.Center, letterSpacing = (-0.4).sp, modifier = Modifier.enter(1))
+    p.intro?.let { Text(it, fontSize = 15.sp, color = Muted, lineHeight = 21.sp, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 10.dp).enter(2)) }
     if (p.items.isNotEmpty()) {
         Spacer(Modifier.height(16.dp))
-        Column(Modifier.fillMaxWidth().background(Fog, RoundedCornerShape(16.dp)).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            p.items.forEach { (t, d) ->
-                Column {
-                    Text(t, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
-                    Text(d, fontSize = 13.sp, color = Muted)
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            p.items.forEachIndexed { idx, (t, d) ->
+                Row(
+                    Modifier.fillMaxWidth().enter(idx + 3).background(Fog, RoundedCornerShape(18.dp)).padding(14.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Box(Modifier.padding(top = 5.dp).size(8.dp).background(Yellow, RoundedCornerShape(50)))
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(t, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                        Text(d, fontSize = 13.sp, color = Muted, lineHeight = 18.sp, modifier = Modifier.padding(top = 2.dp))
+                    }
                 }
             }
         }
     }
     p.example?.let {
         Spacer(Modifier.height(14.dp))
-        Text(it, fontSize = 13.sp, color = Ink, modifier = Modifier.fillMaxWidth().background(Color(0xFFFFF7DB), RoundedCornerShape(14.dp)).padding(14.dp))
+        Text(it, fontSize = 13.sp, color = Ink, lineHeight = 18.sp, modifier = Modifier.fillMaxWidth().enter(p.items.size + 3).background(Tint, RoundedCornerShape(18.dp)).padding(14.dp))
     }
-    p.tip?.let { Text("💡 $it", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 14.dp)) }
+    p.tip?.let { Text("💡 $it", fontSize = 12.sp, color = Muted, lineHeight = 17.sp, modifier = Modifier.padding(top = 14.dp).enter(p.items.size + 4)) }
     Spacer(Modifier.height(8.dp))
 }

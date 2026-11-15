@@ -6,6 +6,13 @@ import android.util.Patterns
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.PersonOff
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.WorkspacePremium
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -90,14 +97,13 @@ fun AdminScreen(onBack: () -> Unit) {
     Screen(hero = {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Brand(); Spacer(Modifier.weight(1f))
-            TextButton(onBack) { Text("← Volver", color = Ink, fontWeight = FontWeight.Bold) }
+            TextButton(onBack) { Text("← Volver", color = Ink, fontWeight = FontWeight.ExtraBold) }
         }
         Spacer(Modifier.height(14.dp))
         HeroTitle("Panel", "Admin", "Activa y renueva cuentas. Cada pago se suma desde hoy (o desde su vencimiento si aún le quedan días).")
     }) {
-        DCard {
-            Text("Activar o renovar por correo", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            Spacer(Modifier.height(8.dp))
+        DCard(index = 0) {
+            SectionTitle(Icons.Outlined.WorkspacePremium, "Activar o renovar por correo")
             OutlinedTextField(
                 newEmail, { newEmail = it }, singleLine = true, label = { Text("Correo del cliente") },
                 shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth(),
@@ -105,38 +111,40 @@ fun AdminScreen(onBack: () -> Unit) {
                 colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Yellow, cursorColor = Yellow)
             )
             Spacer(Modifier.height(10.dp))
-            PillButton("Elegir plan…") {
+            PillButton("Elegir plan…", icon = Icons.Outlined.WorkspacePremium) {
                 val e = newEmail.trim().lowercase()
                 if (Patterns.EMAIL_ADDRESS.matcher(e).matches()) renewFor = e
                 else Toast.makeText(ctx, "Escribe un correo válido", Toast.LENGTH_SHORT).show()
             }
         }
-        DCard {
+        DCard(index = 1) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Clientes (${clients.size})", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
-                TextButton({ reload() }, enabled = !loading) { Text(if (loading) "Cargando…" else "Actualizar", color = Ink) }
+                TextButton({ reload() }, enabled = !loading) { Icon(Icons.Outlined.Refresh, null, tint = Ink, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text(if (loading) "Cargando…" else "Actualizar", color = Ink, fontWeight = FontWeight.SemiBold) }
             }
             Text(
                 St.entries.filter { (counts[it] ?: 0) > 0 }.joinToString("  ·  ") { "${it.label} ${counts[it]}" },
                 fontSize = 12.sp, color = Muted, modifier = Modifier.padding(bottom = 8.dp)
             )
             OutlinedTextField(
-                query, { query = it }, singleLine = true, label = { Text("Buscar nombre, correo o celular") },
+                query, { query = it }, singleLine = true, label = { Text("Buscar nombre, correo o celular") }, leadingIcon = { Icon(Icons.Outlined.Search, null, tint = Muted) },
                 shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Yellow, cursorColor = Yellow)
             )
             error?.let { Text(it, color = Red, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
         }
-        shown.forEach { c ->
+        shown.forEachIndexed { idx, c ->
             val st = c.status(now)
-            DCard {
+            DCard(index = idx + 2) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(c.name.ifBlank { c.email }, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         if (c.name.isNotBlank()) Text(c.email, fontSize = 12.sp, color = Muted)
                         if (c.phone.isNotBlank()) Text(prettyPhone(c.phone), fontSize = 12.sp, color = Muted)
                     }
-                    Text(st.label, color = st.color(), fontWeight = FontWeight.ExtraBold, fontSize = 13.sp)
+                    Surface(color = st.color().copy(alpha = .12f), shape = RoundedCornerShape(50)) {
+                        Text(st.label, color = st.color(), fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
+                    }
                 }
                 c.untilMs?.let {
                     Text("Vence: ${fmt(it)} (${rel(it, now)})", fontSize = 12.sp, color = Ink, modifier = Modifier.padding(top = 8.dp))
@@ -146,11 +154,11 @@ fun AdminScreen(onBack: () -> Unit) {
                     Spacer(Modifier.height(12.dp))
                     PillButton(if (c.hasDoc) "Renovar" else "Activar") { renewFor = c.email }
                     Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (c.phone.isNotBlank()) PillButton("💬 WhatsApp", Modifier.weight(1f), Go) {
+                        if (c.phone.isNotBlank()) PillButton("WhatsApp", Modifier.weight(1f), Go, Icons.Outlined.Forum) {
                             val msg = "Hola ${c.name.ifBlank { "" }}, te escribo de Drix."
                             ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/${c.phone.removePrefix("+")}?text=" + Uri.encode(msg))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                         }
-                        if (c.hasDoc) PillButton("Quitar acceso", Modifier.weight(1f), Charcoal) { revokeFor = c }
+                        if (c.hasDoc) PillButton("Quitar acceso", Modifier.weight(1f), Charcoal, Icons.Outlined.PersonOff) { revokeFor = c }
                     }
                 }
             }

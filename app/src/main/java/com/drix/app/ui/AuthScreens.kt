@@ -3,7 +3,22 @@ package com.drix.app.ui
 import android.content.Intent
 import android.net.Uri
 import android.util.Patterns
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -33,15 +48,33 @@ import kotlinx.coroutines.launch
 
 /* ═════════════ SPLASH ═════════════ */
 
+/** Entrada orquestada: anillos de radar, logo que rebota, lema en dos tiempos y puntos de carga. */
 @Composable
-fun SplashScreen() = Box(
-    Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(YellowLight, Yellow))), Alignment.Center
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        DrixWordmark(72.dp)
-        Spacer(Modifier.height(18.dp))
-        Text("Entrega más.", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
-        Text("Gana más.", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
+fun SplashScreen() {
+    val logo = remember { Animatable(0f) }
+    val l1 = remember { Animatable(0f) }
+    val l2 = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        launch { logo.animateTo(1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow)) }
+        delay(420); launch { l1.animateTo(1f, tween(520)) }
+        delay(160); launch { l2.animateTo(1f, tween(520)) }
+    }
+    Box(
+        Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(YellowLight, Yellow))).heroMotion(),
+        Alignment.Center
+    ) {
+        RadarRings(Ink, Modifier.size(380.dp))
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.graphicsLayer { val v = logo.value; scaleX = .55f + .45f * v; scaleY = .55f + .45f * v; alpha = v.coerceIn(0f, 1f) }) {
+                DrixWordmark(72.dp)
+            }
+            Spacer(Modifier.height(20.dp))
+            Text("Entrega más.", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Ink,
+                modifier = Modifier.graphicsLayer { alpha = l1.value; translationY = (1f - l1.value) * 24.dp.toPx() })
+            Text("Gana más.", fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Ink,
+                modifier = Modifier.graphicsLayer { alpha = l2.value; translationY = (1f - l2.value) * 24.dp.toPx() })
+        }
+        Box(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 48.dp)) { LoadingDots(Ink) }
     }
 }
 
@@ -50,53 +83,89 @@ fun SplashScreen() = Box(
 @Composable
 private fun AuthField(
     value: String, onChange: (String) -> Unit, placeholder: String, icon: ImageVector,
-    keyboard: KeyboardType = KeyboardType.Text, password: Boolean = false
+    keyboard: KeyboardType = KeyboardType.Text, password: Boolean = false, index: Int = 0
 ) {
     var show by remember { mutableStateOf(false) }
+    var focused by remember { mutableStateOf(false) }
+    val iconTint by animateColorAsState(if (focused) Amber else Muted, tween(200), label = "ft")
     val trailing: @Composable () -> Unit = {
         IconButton({ show = !show }) {
             Icon(if (show) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, "Mostrar contraseña", tint = Muted)
         }
     }
     OutlinedTextField(
-        value, onChange, Modifier.fillMaxWidth(), singleLine = true,
+        value, onChange, Modifier.fillMaxWidth().enter(index).onFocusChanged { focused = it.isFocused }, singleLine = true,
         placeholder = { Text(placeholder, color = Muted, fontSize = 14.sp) },
-        leadingIcon = { Icon(icon, null, tint = Muted) },
+        leadingIcon = { Icon(icon, null, tint = iconTint) },
         trailingIcon = if (password) trailing else null,
         visualTransformation = if (password && !show) PasswordVisualTransformation() else VisualTransformation.None,
         keyboardOptions = KeyboardOptions(keyboardType = if (password) KeyboardType.Password else keyboard),
-        shape = RoundedCornerShape(12.dp),
-        colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = YellowDeep, cursorColor = Ink)
+        shape = RoundedCornerShape(16.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            unfocusedBorderColor = Line, focusedBorderColor = YellowDeep, cursorColor = Ink,
+            unfocusedContainerColor = Fog, focusedContainerColor = Color.White
+        )
     )
 }
 
 @Composable
-private fun MainButton(text: String, loading: Boolean, onClick: () -> Unit) = Button(
-    onClick, Modifier.fillMaxWidth().height(52.dp), enabled = !loading, shape = RoundedCornerShape(14.dp),
-    colors = ButtonDefaults.buttonColors(Yellow, Ink, Yellow.copy(alpha = .6f), Ink)
-) {
-    if (loading) CircularProgressIndicator(Modifier.size(22.dp), color = Ink, strokeWidth = 2.5.dp)
-    else Text(text, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-}
+private fun MainButton(text: String, loading: Boolean, onClick: () -> Unit) =
+    PillButton(text, loading = loading, onClick = onClick)
 
+/** Cabecera amarilla viva con logo que «salta» al entrar, y el formulario debajo sobre blanco. */
 @Composable
 private fun AuthPage(title: String, subtitle: String, content: @Composable ColumnScope.() -> Unit) = Column(
-    Modifier.fillMaxSize().background(Color.White).systemBarsPadding().imePadding()
-        .verticalScroll(rememberScrollState()).padding(horizontal = 26.dp, vertical = 24.dp),
-    horizontalAlignment = Alignment.CenterHorizontally
+    Modifier.fillMaxSize().background(Color.White).imePadding().verticalScroll(rememberScrollState())
 ) {
-    Spacer(Modifier.height(12.dp))
-    LogoMark(64.dp)
-    Spacer(Modifier.height(18.dp))
-    Text(title, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, color = Ink)
-    Text(subtitle, fontSize = 14.sp, color = Muted, modifier = Modifier.padding(top = 4.dp, bottom = 24.dp), textAlign = TextAlign.Center)
-    content()
+    Column(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(bottomStart = 36.dp, bottomEnd = 36.dp))
+            .background(Brush.linearGradient(listOf(YellowLight, YellowDeep)))
+            .heroMotion()
+            .statusBarsPadding()
+            .padding(start = 26.dp, end = 26.dp, top = 22.dp, bottom = 34.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        LogoMark(68.dp, Modifier.popIn().shadow(12.dp, RoundedCornerShape(20.dp)).clip(RoundedCornerShape(20.dp)))
+        Spacer(Modifier.height(16.dp))
+        Text(title, fontSize = 27.sp, fontWeight = FontWeight.ExtraBold, color = Ink, letterSpacing = (-0.5).sp, textAlign = TextAlign.Center, modifier = Modifier.enter(1))
+        Text(subtitle, fontSize = 14.sp, color = Ink.copy(alpha = .75f), lineHeight = 19.sp, modifier = Modifier.padding(top = 6.dp).enter(2), textAlign = TextAlign.Center)
+    }
+    Column(
+        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 26.dp, vertical = 26.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, content = content
+    )
 }
 
+/** Mensaje de error/éxito: aparece desplegándose; los errores «tiemblan» una vez. */
 @Composable
 private fun Note(text: String?, error: Boolean) {
-    if (text != null) Text(text, color = if (error) Color(0xFFDC2626) else Color(0xFF15803D), fontSize = 13.sp,
-        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
+    AnimatedContent(
+        text, Modifier.fillMaxWidth(),
+        transitionSpec = { (fadeIn(tween(250)) + expandVertically()) togetherWith fadeOut(tween(120)) },
+        label = "note"
+    ) { t ->
+        if (t != null) {
+            val shake = remember { Animatable(0f) }
+            LaunchedEffect(t) {
+                if (error) {
+                    repeat(3) { shake.animateTo(10f, tween(50)); shake.animateTo(-10f, tween(50)) }
+                    shake.animateTo(0f, tween(50))
+                }
+            }
+            Text(t, color = if (error) Danger else Color(0xFF15803D), fontSize = 13.sp, lineHeight = 18.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 14.dp).graphicsLayer { translationX = shake.value })
+        } else Spacer(Modifier.height(0.dp))
+    }
+}
+
+/** Separador «o continúa con» con líneas a los lados. */
+@Composable
+private fun OrDivider(text: String) = Row(Modifier.fillMaxWidth().padding(vertical = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+    Box(Modifier.weight(1f).height(1.dp).background(Line))
+    Text(text, fontSize = 12.sp, color = Muted, modifier = Modifier.padding(horizontal = 12.dp))
+    Box(Modifier.weight(1f).height(1.dp).background(Line))
 }
 
 /* ═════════════ INICIAR SESIÓN ═════════════ */
@@ -114,9 +183,9 @@ fun LoginScreen(onSignUp: () -> Unit) {
     fun fail(t: Throwable) { note = AuthRepo.message(t); isError = true }
 
     AuthPage("Iniciar Sesión", "Bienvenido de vuelta") {
-        AuthField(email, { email = it }, "Correo electrónico", Icons.Outlined.Email, KeyboardType.Email)
+        AuthField(email, { email = it }, "Correo electrónico", Icons.Outlined.Email, KeyboardType.Email, index = 0)
         Spacer(Modifier.height(12.dp))
-        AuthField(pass, { pass = it }, "Contraseña", Icons.Outlined.Lock, password = true)
+        AuthField(pass, { pass = it }, "Contraseña", Icons.Outlined.Lock, password = true, index = 1)
         Spacer(Modifier.height(20.dp))
         MainButton("Ingresar", loading) {
             if (!Patterns.EMAIL_ADDRESS.matcher(email.trim()).matches()) { note = "Escribe un correo válido."; isError = true }
@@ -127,15 +196,13 @@ fun LoginScreen(onSignUp: () -> Unit) {
             }
         }
         Note(note, isError)
-        Spacer(Modifier.height(20.dp))
-        Text("o continúa con", fontSize = 12.sp, color = Muted)
-        Spacer(Modifier.height(12.dp))
+        OrDivider("o continúa con")
         OutlinedButton(
             onClick = {
                 loading = true; note = null
                 scope.launch { AuthRepo.google(ctx).onFailure(::fail); loading = false }
             },
-            enabled = !loading, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(12.dp),
+            enabled = !loading, modifier = Modifier.fillMaxWidth().height(52.dp).enter(3), shape = RoundedCornerShape(16.dp),
             border = androidx.compose.foundation.BorderStroke(1.dp, Line)
         ) {
             Text("G", color = Color(0xFF4285F4), fontWeight = FontWeight.Black, fontSize = 18.sp)
@@ -172,18 +239,18 @@ fun SignUpScreen(onLogin: () -> Unit) {
     var note by remember { mutableStateOf<String?>(null) }
 
     AuthPage("Crear Cuenta", "Únete a Drix y empieza a ganar") {
-        AuthField(first, { first = it }, "Nombres", Icons.Outlined.Person)
+        AuthField(first, { first = it }, "Nombres", Icons.Outlined.Person, index = 0)
         Spacer(Modifier.height(12.dp))
-        AuthField(last, { last = it }, "Apellidos", Icons.Outlined.Person)
+        AuthField(last, { last = it }, "Apellidos", Icons.Outlined.Person, index = 1)
         Spacer(Modifier.height(12.dp))
-        AuthField(email, { email = it }, "Correo electrónico", Icons.Outlined.Email, KeyboardType.Email)
+        AuthField(email, { email = it }, "Correo electrónico", Icons.Outlined.Email, KeyboardType.Email, index = 2)
         Spacer(Modifier.height(12.dp))
-        AuthField(phone, { phone = it }, "Celular (ej. 987654321)", Icons.Outlined.Phone, KeyboardType.Phone)
+        AuthField(phone, { phone = it }, "Celular (ej. 987654321)", Icons.Outlined.Phone, KeyboardType.Phone, index = 3)
         LockNote()
         Spacer(Modifier.height(12.dp))
-        AuthField(pass, { pass = it }, "Contraseña (mín. 6 caracteres)", Icons.Outlined.Lock, password = true)
+        AuthField(pass, { pass = it }, "Contraseña (mín. 6 caracteres)", Icons.Outlined.Lock, password = true, index = 4)
         Spacer(Modifier.height(12.dp))
-        AuthField(pass2, { pass2 = it }, "Confirmar contraseña", Icons.Outlined.Lock, password = true)
+        AuthField(pass2, { pass2 = it }, "Confirmar contraseña", Icons.Outlined.Lock, password = true, index = 5)
         Spacer(Modifier.height(20.dp))
         MainButton("Registrarse", loading) {
             note = when {
@@ -235,7 +302,7 @@ fun prettyPhone(p: String) = if (p.startsWith("+51") && p.length == 12) "+51 ${p
 
 @Composable
 private fun LockNote() = Row(
-    Modifier.fillMaxWidth().padding(top = 14.dp).background(Color(0xFFFFF7DB), RoundedCornerShape(12.dp)).padding(12.dp),
+    Modifier.fillMaxWidth().padding(top = 14.dp).background(Tint, RoundedCornerShape(16.dp)).padding(14.dp),
     verticalAlignment = Alignment.CenterVertically
 ) {
     Icon(Icons.Outlined.Lock, null, tint = Amber, modifier = Modifier.size(18.dp))
@@ -257,11 +324,11 @@ fun CompleteProfileScreen(email: String) {
 
     AuthPage("Completa tu registro", "Un último paso para activar tu cuenta") {
         if (email.isNotBlank()) Text(email, fontSize = 12.sp, color = Muted, modifier = Modifier.padding(bottom = 14.dp))
-        AuthField(first, { first = it }, "Nombres", Icons.Outlined.Person)
+        AuthField(first, { first = it }, "Nombres", Icons.Outlined.Person, index = 0)
         Spacer(Modifier.height(12.dp))
-        AuthField(last, { last = it }, "Apellidos", Icons.Outlined.Person)
+        AuthField(last, { last = it }, "Apellidos", Icons.Outlined.Person, index = 1)
         Spacer(Modifier.height(12.dp))
-        AuthField(phone, { phone = it }, "Celular (ej. 987654321)", Icons.Outlined.Phone, KeyboardType.Phone)
+        AuthField(phone, { phone = it }, "Celular (ej. 987654321)", Icons.Outlined.Phone, KeyboardType.Phone, index = 2)
         LockNote()
         Spacer(Modifier.height(20.dp))
         MainButton("Continuar", loading) {

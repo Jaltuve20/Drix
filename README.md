@@ -110,3 +110,10 @@ Necesita internet al abrir la app (la lista se consulta siempre al servidor).
 ## Primer uso de la automatización
 Abre Drix > Inicio > «Elegir app instalada» > activa el interruptor > concede «Mostrar sobre otras apps» y Accesibilidad.
 Si el botón verde «Aceptar» no se pulsa, copia el texto de Perfil > Diagnóstico para ajustar el lector.
+
+## Rediseño de interfaz (UI/animaciones)
+- Misma paleta (amarillo / carbón / niebla); nuevas utilidades de movimiento en `ui/Motion.kt`.
+- Cabeceras vivas con burbujas y «líneas de velocidad», tarjetas que solapan la cabecera y entran escalonadas.
+- Barra inferior con píldora amarilla animada, transiciones entre pestañas y entre pantallas (splash → login → app).
+- Botones con rebote + vibración ligera, contadores que suben, dígitos que ruedan, radar de estado en Inicio.
+- Iconos Material en lugar de emojis en botones y paneles.
