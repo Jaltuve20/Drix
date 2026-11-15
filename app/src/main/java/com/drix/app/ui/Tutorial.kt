@@ -59,6 +59,7 @@ private fun tutorialPages(name: String) = listOf(
         listOf(
             "Desde / Hasta (h)" to "Horas del día (0 a 24) en que Drix trabaja. Fuera de ese horario no acepta nada.",
             "Retraso mín / máx (ms)" to "Espera al azar antes de pulsar «Aceptar». 1000 ms = 1 segundo. Los pedidos caducan rápido: mantenlo bajo.",
+            "Palabras bloqueadas" to "Escribe frases como «casco doble» y Drix rechaza todo pedido que las mencione (en la tarjeta o en el comentario).",
             "Aceptar si no se identifica el distrito" to "Si la dirección no dice el distrito y usas zonas ✅ Preferir, decide si Drix acepta igual o lo rechaza."
         )),
     TPage("🗺️", "Zonas del mapa (1 de 2)", "En la pestaña Zonas marcas distritos completos tocándolos en el mapa:",
@@ -71,7 +72,7 @@ private fun tutorialPages(name: String) = listOf(
         tip = "«Mi ubicación» y «Borrar todas las zonas» están en el botón de ajustes, arriba a la derecha."),
     TPage("🚦", "Zonas (2 de 2): cómo decide Drix", null,
         listOf(
-            "🚫 Bloquear" to "Rechaza siempre los pedidos cuyo recojo esté en ese distrito.",
+            "🚫 Bloquear" to "Rechaza siempre los pedidos cuyo recojo O destino esté en ese distrito (también por zonas como Vitarte o Huaycán en Ate).",
             "✅ Preferir" to "Acepta SOLO pedidos de los distritos que prefieras. Si marcas Lince y Miraflores, todo lo demás se rechaza.",
             "Sin zonas" to "Si no marcas nada, Drix acepta en cualquier distrito (siempre que cumpla tus parámetros)."
         ),

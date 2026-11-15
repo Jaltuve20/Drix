@@ -33,6 +33,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -58,6 +59,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -371,7 +373,8 @@ fun ParamsScreen() {
                     colors = SwitchDefaults.colors(checkedTrackColor = Go, checkedThumbColor = Color.White))
             }
         }
-        Box(Modifier.enter(2)) {
+        BlockedWordsCard(2)
+        Box(Modifier.enter(3)) {
             PillButton(if (saved) "¡Guardado!" else "Guardar cambios", color = if (saved) Go else Yellow, icon = Icons.Outlined.CheckCircle) {
                 val lo = (d1.toIntOrNull() ?: cfg.minDelayMs).coerceIn(0, 5000)
                 val hi = (d2.toIntOrNull() ?: cfg.maxDelayMs).coerceIn(lo, 5000)
@@ -389,6 +392,87 @@ fun ParamsScreen() {
             }
         }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/* ═════════════ PALABRAS BLOQUEADAS ═════════════ */
+
+private val WORD_SUGGESTIONS = listOf("casco doble", "doble casco", "doble protección", "2 cascos", "mascota")
+
+/** El usuario escribe las palabras o frases que quiere rechazar (ej. «casco doble»). */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BlockedWordsCard(index: Int) {
+    val ctx = LocalContext.current
+    val words by DrixPrefs.words.collectAsStateWithLifecycle()
+    var text by remember { mutableStateOf("") }
+
+    fun add(raw: String) {
+        val w = raw.replace(Regex("\\s+"), " ").trim().take(40)
+        when {
+            w.length < 2 -> Toast.makeText(ctx, "Escribe al menos 2 letras", Toast.LENGTH_SHORT).show()
+            words.any { Districts.norm(it).trim() == Districts.norm(w).trim() } -> { text = ""; Toast.makeText(ctx, "Esa palabra ya está en la lista", Toast.LENGTH_SHORT).show() }
+            words.size >= 50 -> Toast.makeText(ctx, "Máximo 50 palabras", Toast.LENGTH_SHORT).show()
+            else -> { DrixPrefs.setWords(words + w); text = "" }
+        }
+    }
+
+    DCard(index = index) {
+        SectionTitle(Icons.Outlined.Block, "Palabras bloqueadas", "Si el pedido o su comentario contiene alguna, Drix lo rechaza. Ej.: casco doble.")
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedTextField(
+                text, { text = it }, Modifier.weight(1f), singleLine = true,
+                placeholder = { Text("Escribe una palabra o frase", fontSize = 14.sp, color = Muted) },
+                shape = RoundedCornerShape(14.dp),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { add(text) }),
+                colors = OutlinedTextFieldDefaults.colors(
+                    unfocusedBorderColor = Line, focusedBorderColor = YellowDeep, cursorColor = Ink,
+                    unfocusedContainerColor = Fog, focusedContainerColor = Color.White
+                )
+            )
+            Box(
+                Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(Yellow).clickable { add(text) },
+                Alignment.Center
+            ) { Icon(Icons.Outlined.AddCircleOutline, "Agregar", tint = Ink) }
+        }
+        Spacer(Modifier.height(14.dp))
+        if (words.isEmpty()) {
+            Text("Aún no bloqueas ninguna palabra.", fontSize = 12.sp, color = Muted)
+        } else {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                words.forEach { w ->
+                    key(w) {
+                        Row(
+                            Modifier.popIn().clip(RoundedCornerShape(50)).background(Danger.copy(alpha = .1f))
+                                .clickable { DrixPrefs.setWords(words - w) }.padding(start = 14.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(w, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink)
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.Outlined.Close, "Quitar $w", tint = Danger, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+        }
+        val left = WORD_SUGGESTIONS.filter { sug -> words.none { Districts.norm(it).trim() == Districts.norm(sug) } }
+        if (left.isNotEmpty()) {
+            Text("Sugerencias", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                left.forEach { sug ->
+                    Row(
+                        Modifier.clip(RoundedCornerShape(50)).background(Tint).clickable { add(sug) }.padding(horizontal = 12.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Outlined.AddCircleOutline, null, tint = Amber, modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text(sug, fontSize = 13.sp, color = Ink)
+                    }
+                }
+            }
+        }
+        Text("No distingue mayúsculas ni tildes. Toca una palabra para quitarla.", fontSize = 11.sp, color = Muted, lineHeight = 15.sp, modifier = Modifier.padding(top = 14.dp))
     }
 }
 
@@ -449,18 +533,19 @@ fun ZonesScreen() {
                 }
             }
 
-            // Selector de tipo de zona al crear (entra y sale deslizando)
-            AnimatedVisibility(
-                visible = mode == ZoneMode.Create,
-                modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
-                enter = slideInVertically(spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow)) { it } + fadeIn(),
-                exit = slideOutVertically { it } + fadeOut()
+            // Selector de tipo de zona al crear (entra y sale deslizando con rebote)
+            val pick by animateFloatAsState(
+                if (mode == ZoneMode.Create) 1f else 0f,
+                spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow), label = "pick"
+            )
+            if (pick > 0.01f) Surface(
+                Modifier.align(Alignment.BottomCenter).padding(16.dp)
+                    .graphicsLayer { alpha = pick.coerceIn(0f, 1f); translationY = (1f - pick) * 90.dp.toPx() },
+                shape = RoundedCornerShape(50), color = Color.White, shadowElevation = 10.dp
             ) {
-                Surface(shape = RoundedCornerShape(50), color = Color.White, shadowElevation = 10.dp) {
-                    Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Seg(Icons.Outlined.Block, "Bloquear", !prefer) { prefer = false }
-                        Seg(Icons.Outlined.CheckCircle, "Preferir", prefer) { prefer = true }
-                    }
+                Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Seg(Icons.Outlined.Block, "Bloquear", !prefer) { prefer = false }
+                    Seg(Icons.Outlined.CheckCircle, "Preferir", prefer) { prefer = true }
                 }
             }
         }

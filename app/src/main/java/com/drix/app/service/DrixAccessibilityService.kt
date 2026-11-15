@@ -171,6 +171,7 @@ class DrixAccessibilityService : AccessibilityService() {
         DrixPrefs.debug.value = (btn?.let { "[BOTÓN] ${it.className} clic=${it.isClickable} activo=${it.isEnabled} área=$box\n" } ?: "[BOTÓN] no encontrado\n") +
             texts.take(60).joinToString("\n")
         val zones = DrixPrefs.zones.value
+        val words = DrixPrefs.words.value
 
         // A) Pantalla de DETALLE ("Aceptar por PEN…")
         if (OrderParser.isDetail(texts)) {
@@ -179,13 +180,16 @@ class DrixAccessibilityService : AccessibilityService() {
             val armed = isArmed()
             if (o == null && !armed) { overlay.show("👀 Detalle ilegible"); return }
             val sig = o?.sig ?: armedSig
-            val decision: Decision = if (armed) Decision.Accept else OrderEvaluator.evaluate(o!!, cfg, zones)
+            // Aunque el pedido ya se haya aceptado en la lista, el DETALLE muestra el destino y el comentario completos: se vuelve a revisar zonas rojas y palabras.
+            val decision: Decision = if (armed) (OrderEvaluator.blocked(texts, zones, words)?.let { Decision.Reject(it) } ?: Decision.Accept)
+                                     else OrderEvaluator.evaluate(o!!, cfg, zones, words)
             when (decision) {
                 is Decision.Accept -> {
                     if (sig == detailSig && now - detailAt < 12000) return // ya aceptado hace poco
                     startAccept(cfg, sig, o ?: armedOrder)
                 }
                 is Decision.Reject -> {
+                    armedSig = ""; armedOrder = null // desarma el pedido de la lista: no se acepta
                     overlay.show("❌ ${decision.why}", false)
                     if (sig == detailSig && now - detailAt < 12000) return
                     ignoring = true
@@ -207,7 +211,7 @@ class DrixAccessibilityService : AccessibilityService() {
         var why = ""
         for (card in cards) {
             val o = card.order
-            when (val d = OrderEvaluator.evaluate(o, cfg, zones)) {
+            when (val d = OrderEvaluator.evaluate(o, cfg, zones, words)) {
                 is Decision.Accept -> {
                     if (listHandled(o.sig)) return
                     listPending = o.sig

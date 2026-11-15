@@ -117,3 +117,8 @@ Si el botón verde «Aceptar» no se pulsa, copia el texto de Perfil > Diagnóst
 - Barra inferior con píldora amarilla animada, transiciones entre pestañas y entre pantallas (splash → login → app).
 - Botones con rebote + vibración ligera, contadores que suben, dígitos que ruedan, radar de estado en Inicio.
 - Iconos Material en lugar de emojis en botones y paneles.
+
+## Palabras bloqueadas y zonas (v. siguiente)
+- Parámetros → «Palabras bloqueadas»: frases que, si aparecen en la tarjeta o en el detalle del pedido, lo rechazan (ej. «casco doble»).
+- Zonas rojas ahora se aplican al recojo **y** al destino, detectando todos los distritos del pedido y sub-zonas de Ate (Vitarte, Huaycán, Salamanca, Santa Clara, Ceres…).
+- Al abrir el detalle de un pedido ya aceptado en la lista se vuelven a revisar zonas rojas y palabras antes de pulsar «Aceptar».

@@ -5,7 +5,13 @@ import com.drix.app.data.*
 import java.util.Calendar
 import kotlin.math.abs
 
-data class Order(val fare: Float, val tripKm: Float, val pickupKm: Float, val district: District?) {
+data class Order(
+    val fare: Float, val tripKm: Float, val pickupKm: Float, val district: District?,
+    /** Todos los distritos mencionados (recojo y destino). */
+    val districts: List<District> = emptyList(),
+    /** Todo el texto del pedido, normalizado, para buscar palabras bloqueadas. */
+    val blob: String = ""
+) {
     val perKm get() = if (tripKm > 0) fare / tripKm else Float.NaN   // NaN = desconocido (no se filtra)
     val sig get() = "$fare|$tripKm|$pickupKm|${district?.name}"
 }
@@ -46,7 +52,7 @@ object OrderParser {
         val fare = FARE.find(joined)?.groupValues?.get(1)?.let(::num) ?: return null
         val d = distances(joined)
         if (d.size < 2) return null
-        return Order(fare, tripKm = d[1], pickupKm = d[0], district = Districts.findIn(texts))
+        return Order(fare, tripKm = d[1], pickupKm = d[0], district = Districts.findIn(texts), districts = Districts.allIn(texts), blob = Districts.blob(texts))
     }
 
     /** Pantalla de DETALLE ("Aceptar por PEN6.50"): precio del botón; recojo = "~9,5 km" junto a S/x/km. */
@@ -57,7 +63,7 @@ object OrderParser {
         val all = distances(joined)
         val pickup = PERKM.find(joined)?.groupValues?.get(1)?.let(::num) ?: all.getOrNull(0) ?: Float.NaN
         val trip = all.firstOrNull { abs(it - pickup) > 0.01f } ?: Float.NaN
-        return Order(fare, trip, pickup, Districts.findIn(texts))
+        return Order(fare, trip, pickup, Districts.findIn(texts), Districts.allIn(texts), Districts.blob(texts))
     }
 
     /** La lista muestra varios pedidos: devuelve el nodo más alto con exactamente 1 tarifa. */
@@ -93,16 +99,38 @@ object OrderParser {
 }
 
 object OrderEvaluator {
-    fun evaluate(o: Order, c: Config, zones: List<Zone>): Decision {
+    /** Primera palabra bloqueada que aparece en [blob]. Las de 3 letras o menos deben ir como palabra completa. */
+    private fun wordHit(blob: String, words: List<String>): String? = words.firstOrNull { w ->
+        val n = Districts.norm(w).trim().replace(Regex("\\s+"), " ")
+        when {
+            n.isEmpty() -> false
+            n.length <= 3 -> Regex("(?<![a-z0-9])" + Regex.escape(n) + "(?![a-z0-9])").containsMatchIn(blob)
+            else -> blob.contains(n)
+        }
+    }
+
+    /** Revisión de seguridad (zonas rojas + palabras) sobre todo el texto de una pantalla. Null = nada bloqueado. */
+    fun blocked(texts: List<String>, zones: List<Zone>, words: List<String>): String? {
+        wordHit(Districts.blob(texts), words)?.let { return "Palabra bloqueada: «$it»" }
+        val reds = zones.filter { !it.accept }.map { it.name }
+        Districts.allIn(texts).firstOrNull { it.name in reds }?.let { return "Zona roja: ${it.name}" }
+        return null
+    }
+
+    fun evaluate(o: Order, c: Config, zones: List<Zone>, words: List<String> = emptyList()): Decision {
         val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         val inShift = if (c.startHour <= c.endHour) h in c.startHour until c.endHour
                       else h >= c.startHour || h < c.endHour
         val greens = zones.filter { it.accept }.map { it.name }
         val reds = zones.filter { !it.accept }.map { it.name }
         val dn = o.district?.name
+        // Zona roja: se mira el recojo Y el destino (cualquier distrito que aparezca en el pedido)
+        val redHit = (o.districts + listOfNotNull(o.district)).firstOrNull { it.name in reds }
+        val wordHit = wordHit(o.blob, words)
         return when {
             !inShift -> Decision.Reject("Fuera de horario")
-            dn != null && dn in reds -> Decision.Reject("Zona roja: $dn")
+            wordHit != null -> Decision.Reject("Palabra bloqueada: «$wordHit»")
+            redHit != null -> Decision.Reject("Zona roja: ${redHit.name}")
             greens.isNotEmpty() && dn == null && !c.unknownOk -> Decision.Reject("Distrito no identificado")
             greens.isNotEmpty() && dn != null && dn !in greens -> Decision.Reject("Fuera de zona: $dn")
             o.fare < c.minFare -> Decision.Reject("Tarifa < S/ %.2f".format(c.minFare))

@@ -10,7 +10,7 @@ object Districts {
     // nombre,lat,lon,radio_m,alias1|alias2  (valores aproximados)
     private const val RAW = """
 Ancón,-11.7750,-77.1750,4000
-Ate,-12.0258,-76.9178,5000
+Ate,-12.0258,-76.9178,5000,Ate Vitarte|Vitarte|Huaycan|Salamanca|Santa Clara|Ceres|Mayorazgo|Los Ficus|Valdiviezo|Pariachi|Manylsa|Gloria Grande|Santa Raquel|Horacio Zeballos
 Barranco,-12.1400,-77.0210,1200
 Bellavista,-12.0620,-77.1100,1200
 Breña,-12.0580,-77.0520,1000
@@ -82,6 +82,24 @@ Villa María del Triunfo,-12.1670,-76.9300,4000,VMT
     /** Distrito bajo un punto del mapa (el más cercano a su centro dentro de su radio). */
     fun at(lat: Double, lon: Double): District? =
         all.filter { dist(it.lat, it.lon, lat, lon) <= it.r }.minByOrNull { dist(it.lat, it.lon, lat, lon) / it.r }
+
+    /** Texto en minúsculas, sin tildes y con espacios simples (para buscar palabras bloqueadas). */
+    fun blob(texts: List<String>): String = norm(texts.joinToString(" | ")).replace(Regex("\\s+"), " ")
+
+    /**
+     * TODOS los distritos que aparecen en el pedido (recojo, destino, comentario…).
+     * Si un nombre contiene a otro (San Juan de Lurigancho ⊃ Lurigancho) se queda solo el más largo.
+     */
+    fun allIn(texts: List<String>): List<District> {
+        val n = blob(texts)
+        val hits = keys.flatMap { (rx, d) -> rx.findAll(n).map { Triple(it.range.first, it.range.last, d) }.toList() }
+        val out = LinkedHashMap<String, District>()
+        for ((s, e, d) in hits) {
+            val inside = hits.any { (s2, e2, d2) -> d2.name != d.name && s2 <= s && e2 >= e && (e2 - s2) > (e - s) }
+            if (!inside) out[d.name] = d
+        }
+        return out.values.toList()
+    }
 
     private fun scan(s: String): District? {
         val t = norm(s)

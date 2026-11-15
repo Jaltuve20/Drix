@@ -29,6 +29,9 @@ object DrixPrefs {
     private val _zones = MutableStateFlow<List<Zone>>(emptyList())
     val cfg = _cfg.asStateFlow()
     val zones = _zones.asStateFlow()
+    private val _words = MutableStateFlow<List<String>>(emptyList())
+    /** Palabras o frases que el usuario quiere bloquear (ej. «casco doble»). */
+    val words = _words.asStateFlow()
     val debug = MutableStateFlow("") // últimos textos leídos por el servicio (diagnóstico)
 
     fun init(ctx: Context) {
@@ -43,6 +46,7 @@ object DrixPrefs {
             minDelayMs = sp.getInt("dmin", d.minDelayMs), maxDelayMs = sp.getInt("dmax", d.maxDelayMs),
             unknownOk = sp.getBoolean("unk", d.unknownOk)
         )
+        _words.value = sp.getString("bwords", "")!!.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
         _zones.value = sp.getString("zones3", "")!!.split(";").mapNotNull {
             val p = it.split(":")
             if (p.size != 2) null else Zone(p[0], p[1] == "1")
@@ -72,6 +76,11 @@ object DrixPrefs {
         if (!::sp.isInitialized || !sp.getBoolean("acc_ok", false)) return false
         val u = sp.getLong("acc_until", 0L)
         return u == 0L || System.currentTimeMillis() < u
+    }
+
+    fun setWords(w: List<String>) {
+        _words.value = w
+        sp.edit().putString("bwords", w.joinToString("\n")).apply()
     }
 
     fun setZones(z: List<Zone>) {
