@@ -122,3 +122,37 @@ Si el botón verde «Aceptar» no se pulsa, copia el texto de Perfil > Diagnóst
 - Parámetros → «Palabras bloqueadas»: frases que, si aparecen en la tarjeta o en el detalle del pedido, lo rechazan (ej. «casco doble»).
 - Zonas rojas ahora se aplican al recojo **y** al destino, detectando todos los distritos del pedido y sub-zonas de Ate (Vitarte, Huaycán, Salamanca, Santa Clara, Ceres…).
 - Al abrir el detalle de un pedido ya aceptado en la lista se vuelven a revisar zonas rojas y palabras antes de pulsar «Aceptar».
+
+## Actualizaciones automáticas + APK firmado y optimizado
+
+**Cómo funciona:** cada vez que publicas una versión, GitHub compila un APK *firmado* y *optimizado* (R8) y lo sube a
+**Releases** junto con `update.json`. La app, al abrirse, lee ese archivo; si hay una versión nueva muestra un aviso,
+descarga el APK con barra de progreso, verifica su huella SHA-256 y abre el instalador. Nadie vuelve a pasarse el APK.
+También hay un botón *Perfil → Buscar actualizaciones*.
+
+**Publicar una versión** (cualquiera de las dos):
+1. Etiqueta: `git tag v1.7.1 && git push origin v1.7.1`
+2. GitHub → *Actions* → *Release APK* → *Run workflow* (escribes «qué hay de nuevo» y si es obligatoria).
+
+El número interno de versión (`versionCode`) sube solo en cada ejecución.
+
+**Requisitos**
+- El repositorio debe ser **público** (la app descarga sin iniciar sesión). Si es privado, publica `update.json` y `Drix.apk`
+  en otro hosting y define la variable `UPDATE_URL` (Settings → Variables) con la dirección de `update.json`.
+- La **primera vez** hay que instalar este APK a mano; desde ahí todo se actualiza solo.
+- Android pedirá una sola vez «permitir instalar apps de esta fuente» para Drix.
+
+**Llave de firma (importante)**
+- Por defecto el release se firma con `app/drix.keystore` (la misma de siempre): las instalaciones actuales se actualizan
+  sin desinstalar y «Continuar con Google» sigue funcionando. Esa llave está dentro del repositorio con contraseña simple;
+  si el repo es público, cámbiala por una privada:
+  ```
+  keytool -genkeypair -v -keystore release.keystore -alias drix -keyalg RSA -keysize 2048 -validity 10000
+  base64 -w0 release.keystore > keystore.b64
+  ```
+  Crea estos *Secrets* en GitHub (Settings → Secrets and variables → Actions): `RELEASE_KEYSTORE_B64` (contenido de
+  keystore.b64), `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`.
+  Después añade el SHA-1 nuevo en Firebase (Configuración del proyecto → tu app Android) y, como la firma cambia,
+  los usuarios deberán desinstalar/instalar **una sola vez**. Guarda `release.keystore` y sus contraseñas en un lugar
+  seguro: si la pierdes, nadie podrá actualizar la app.
+- Si algo falla solo en release, compila con `gradle assembleRelease -PnoMinify` para descartar la optimización.

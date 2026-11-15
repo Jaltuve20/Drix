@@ -176,6 +176,7 @@ fun DrixRoot() {
 fun DrixApp(profile: Profile) {
     var tab by remember { mutableIntStateOf(0) }
     var showAdmin by remember { mutableStateOf(false) }
+    UpdateDialogs()
     if (showAdmin && profile.isAdmin) { AdminScreen { showAdmin = false }; return }
     Scaffold(
         containerColor = Fog,

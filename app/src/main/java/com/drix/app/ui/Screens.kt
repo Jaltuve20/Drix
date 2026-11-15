@@ -71,6 +71,7 @@ import com.drix.app.auth.AuthRepo
 import com.drix.app.auth.Profile
 import com.drix.app.data.*
 import com.drix.app.service.DrixAccessibilityService
+import com.drix.app.update.Updater
 import java.io.File
 import java.text.SimpleDateFormat
 import java.time.Instant
@@ -740,10 +741,18 @@ fun ProfileScreen(profile: Profile, onAdmin: () -> Unit = {}) {
                 }
             }
         }
+        DCard(index = 4) {
+            SectionTitle(Icons.Outlined.CloudDownload, "Actualizaciones", "Drix se actualiza solo desde internet: no necesitas descargar el APK otra vez.")
+            Tile("Versión instalada", Updater.installedName(ctx).ifBlank { "—" }, Modifier.fillMaxWidth(), Icons.Outlined.Info)
+            Spacer(Modifier.height(12.dp))
+            PillButton("Buscar actualizaciones", color = Charcoal, icon = Icons.Outlined.Sync) {
+                scope.launch { Updater.check(ctx, manual = true) }
+            }
+        }
         if (profile.isAdmin) PillButton("Panel de administrador", icon = Icons.Outlined.AdminPanelSettings, onClick = onAdmin)
-        DebugCard(4)
+        DebugCard(5)
         PillButton("Cerrar sesión", color = Charcoal, icon = Icons.Outlined.PowerSettingsNew) { AuthRepo.signOut() }
-        Text("Drix v1.6.1", fontSize = 12.sp, color = Muted, modifier = Modifier.align(Alignment.CenterHorizontally))
+        Text("Drix v${Updater.installedName(ctx)}", fontSize = 12.sp, color = Muted, modifier = Modifier.align(Alignment.CenterHorizontally))
     }
 }
 

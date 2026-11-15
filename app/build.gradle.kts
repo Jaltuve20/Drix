@@ -9,7 +9,11 @@ android {
     compileSdk = 35
     defaultConfig {
         applicationId = "com.drix.app"; minSdk = 26; targetSdk = 35
-        versionCode = 11; versionName = "1.6.1"
+        // En GitHub Actions el número de versión sube solo (VERSION_CODE / VERSION_NAME); en local usa estos valores.
+        versionCode = (System.getenv("VERSION_CODE") ?: "12").toInt()
+        versionName = System.getenv("VERSION_NAME") ?: "1.7.0"
+        // Dirección del archivo update.json que lee el actualizador dentro de la app (vacío = sin actualizaciones)
+        buildConfigField("String", "UPDATE_URL", "\"${System.getenv("UPDATE_URL") ?: ""}\"")
     }
     // Llave fija para que el SHA-1 no cambie entre compilaciones (necesario para "Continuar con Google")
     signingConfigs {
@@ -18,8 +22,30 @@ android {
             keyAlias = "drix"; keyPassword = "drixdebug"
         }
     }
-    buildTypes { getByName("debug") { signingConfig = signingConfigs.getByName("drix") } }
-    buildFeatures { compose = true }
+    signingConfigs {
+        // Versión release firmada. Con los secretos de GitHub usa TU llave privada; sin ellos usa la misma llave
+        // de arriba (así las instalaciones actuales se pueden actualizar sin desinstalar).
+        create("release") {
+            storeFile = file(System.getenv("RELEASE_KEYSTORE")?.takeIf { it.isNotBlank() } ?: "drix.keystore")
+            storePassword = System.getenv("RELEASE_STORE_PASSWORD") ?: "drixdebug"
+            keyAlias = System.getenv("RELEASE_KEY_ALIAS") ?: "drix"
+            keyPassword = System.getenv("RELEASE_KEY_PASSWORD") ?: "drixdebug"
+        }
+    }
+    buildTypes {
+        getByName("debug") { signingConfig = signingConfigs.getByName("drix") }
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+            // Optimización: R8 reduce y ofusca el código y quita recursos sin usar (APK más liviano y rápido).
+            // Si algún día algo falla solo en release, compila con -PnoMinify para descartar R8.
+            val optimize = !project.hasProperty("noMinify")
+            isMinifyEnabled = optimize
+            isShrinkResources = optimize
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+    }
+    lint { checkReleaseBuilds = false; abortOnError = false }
+    buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
 }
