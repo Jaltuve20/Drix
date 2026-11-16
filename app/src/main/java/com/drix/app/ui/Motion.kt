@@ -53,7 +53,7 @@ val Danger = Color(0xFFDC2626)
 
 /**
  * Aparece deslizando hacia arriba con fundido. [index] escalona la entrada de varias tarjetas.
- * Optimizado: ModulatedAlpha evita crear un buffer offscreen por tarjeta (muy caro con sombras),
+ * Optimizado: ModulateAlpha evita crear un buffer offscreen por tarjeta (muy caro con sombras),
  * la animación es corta y el escalón máximo es pequeño para que nunca haya decenas de capas animadas a la vez.
  */
 @Composable
@@ -64,7 +64,7 @@ fun Modifier.enter(index: Int = 0, dy: Dp = 16.dp): Modifier {
         a.animateTo(1f, tween(280, easing = FastOutSlowInEasing))
     }
     return this.graphicsLayer {
-        compositingStrategy = CompositingStrategy.ModulatedAlpha
+        compositingStrategy = CompositingStrategy.ModulateAlpha
         alpha = a.value
         translationY = (1f - a.value) * dy.toPx()
     }
@@ -81,7 +81,7 @@ fun Modifier.popIn(delayMs: Long = 0L): Modifier {
         s.animateTo(1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium))
     }
     return this.graphicsLayer {
-        compositingStrategy = CompositingStrategy.ModulatedAlpha
+        compositingStrategy = CompositingStrategy.ModulateAlpha
         alpha = a.value
         scaleX = s.value; scaleY = s.value
     }
