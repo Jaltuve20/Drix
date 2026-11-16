@@ -503,7 +503,7 @@ private fun BlockedWordsCard(index: Int) {
 enum class ZoneMode(val label: String) { Navigate("Navegar"), Create("Crear zona"), Delete("Eliminar zona") }
 
 @Composable
-fun ZonesScreen() {
+fun ZonesScreen(active: Boolean = true) {
     val zones by DrixPrefs.zones.collectAsStateWithLifecycle()
     var mode by remember { mutableStateOf(ZoneMode.Navigate) }
     var prefer by remember { mutableStateOf(false) }
@@ -515,7 +515,7 @@ fun ZonesScreen() {
     Column(Modifier.fillMaxSize()) {
         Spacer(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.statusBars).background(YellowDeep))
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            ZoneMap(zones, mode, prefer, fly, locate, Modifier.fillMaxSize())
+            ZoneMap(zones, mode, prefer, fly, locate, Modifier.fillMaxSize(), active)
 
             // Barra superior flotante
             Row(
@@ -661,16 +661,16 @@ private fun initOsm(ctx: Context) {
  * Se crea UN frame después de entrar en la pestaña: así el cambio de pantalla no se atasca construyendo el MapView.
  */
 @Composable
-fun ZoneMap(zones: List<Zone>, mode: ZoneMode, prefer: Boolean, fly: Pair<District, Int>?, locate: Int, modifier: Modifier = Modifier) {
+fun ZoneMap(zones: List<Zone>, mode: ZoneMode, prefer: Boolean, fly: Pair<District, Int>?, locate: Int, modifier: Modifier = Modifier, active: Boolean = true) {
     var ready by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { withFrameNanos { }; withFrameNanos { }; ready = true }
     if (!ready) Box(modifier.background(Color(0xFFE9ECEF)), Alignment.Center) {
         CircularProgressIndicator(Modifier.size(28.dp), color = YellowDeep, strokeWidth = 3.dp)
-    } else ZoneMapContent(zones, mode, prefer, fly, locate, modifier)
+    } else ZoneMapContent(zones, mode, prefer, fly, locate, modifier, active)
 }
 
 @Composable
-private fun ZoneMapContent(zones: List<Zone>, mode: ZoneMode, prefer: Boolean, fly: Pair<District, Int>?, locate: Int, modifier: Modifier) {
+private fun ZoneMapContent(zones: List<Zone>, mode: ZoneMode, prefer: Boolean, fly: Pair<District, Int>?, locate: Int, modifier: Modifier, active: Boolean) {
     val ctx = LocalContext.current
     val modeNow by rememberUpdatedState(mode)
     val preferNow by rememberUpdatedState(prefer)
@@ -719,8 +719,11 @@ private fun ZoneMapContent(zones: List<Zone>, mode: ZoneMode, prefer: Boolean, f
     LaunchedEffect(fly) {
         fly?.let { (d, _) -> map.controller.setZoom(12.5); map.controller.animateTo(GeoPoint(d.lat, d.lon)) }
     }
+    // El mapa se pausa cuando la pestaña no se ve (no carga tiles ni gasta GPS) y se reanuda al volver.
+    LaunchedEffect(active) {
+        if (active) map.onResume() else { map.onPause(); me.disableMyLocation() }
+    }
     DisposableEffect(map) {
-        map.onResume()
         onDispose {
             lastCenter = GeoPoint(map.mapCenter.latitude, map.mapCenter.longitude); lastZoom = map.zoomLevelDouble
             map.onPause(); me.disableMyLocation()

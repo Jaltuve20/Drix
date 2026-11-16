@@ -31,6 +31,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
@@ -176,26 +178,54 @@ fun DrixRoot() {
 fun DrixApp(profile: Profile) {
     var tab by remember { mutableIntStateOf(0) }
     var showAdmin by remember { mutableStateOf(false) }
+    // Pestañas ya creadas. Se quedan VIVAS (como en Facebook): cambiar de pestaña solo muestra/oculta, no reconstruye la pantalla.
+    // Además conservan el scroll y lo que estabas escribiendo.
+    var loaded by remember { mutableStateOf(setOf(0)) }
+    val live = loaded + tab
+    LaunchedEffect(tab) { if (tab !in loaded) loaded = loaded + tab }
+    // Precarga en segundo plano (ya con la app abierta y en reposo): Parámetros, Extras y Perfil. «Zonas» se crea al visitarla (lleva el mapa).
+    LaunchedEffect(Unit) {
+        delay(900)
+        for (t in intArrayOf(1, 3, 4)) { if (t !in loaded) loaded = loaded + t; delay(450) }
+    }
     UpdateDialogs()
-    if (showAdmin && profile.isAdmin) { AdminScreen { showAdmin = false }; return }
-    Scaffold(
-        containerColor = Fog,
-        contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
-        bottomBar = { DrixNavBar(tab) { tab = it } }
-    ) { pad ->
-        Box(Modifier.padding(pad).fillMaxSize()) {
-            // Cambio de pestaña SIN AnimatedContent: antes se componían dos pantallas a la vez (la que sale y la que entra)
-            // con deslizamiento + fundido, y al entrar en «Zonas» además se creaba el mapa en pleno movimiento.
-            // Ahora se compone solo la pantalla activa; cada tarjeta ya hace su propia entrada ligera.
-            when (tab) {
-                0 -> HomeScreen { tab = it }
-                1 -> ParamsScreen()
-                2 -> ZonesScreen()
-                3 -> ExtrasScreen()
-                else -> ProfileScreen(profile) { showAdmin = true }
+    Box(Modifier.fillMaxSize()) {
+        Scaffold(
+            containerColor = Fog,
+            contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
+            bottomBar = { DrixNavBar(tab) { tab = it } }
+        ) { pad ->
+            Box(Modifier.padding(pad).fillMaxSize()) {
+                for (t in 0..4) if (t in live) key(t) {
+                    KeepAlive(t == tab && !showAdmin) {
+                        when (t) {
+                            0 -> HomeScreen { tab = it }
+                            1 -> ParamsScreen()
+                            2 -> ZonesScreen(active = tab == 2 && !showAdmin)
+                            3 -> ExtrasScreen()
+                            else -> ProfileScreen(profile) { showAdmin = true }
+                        }
+                    }
+                }
             }
         }
+        // El panel de administrador va ENCIMA (antes sustituía a todo y se destruían las pestañas).
+        if (showAdmin && profile.isAdmin) Box(Modifier.fillMaxSize().background(Fog).pointerInput(Unit) {}) {
+            AdminScreen { showAdmin = false }
+        }
     }
+}
+
+/**
+ * Mantiene una pantalla compuesta y medida aunque no se vea. Si no está [active] no se coloca: ni se dibuja
+ * ni recibe toques ni lee accesibilidad. Al activarse aparece al instante.
+ */
+@Composable
+private fun KeepAlive(active: Boolean, content: @Composable () -> Unit) {
+    Box(Modifier.layout { measurable, constraints ->
+        val p = measurable.measure(constraints)
+        layout(p.width, p.height) { if (active) p.place(0, 0) }
+    }) { content() }
 }
 
 /** Barra inferior flotante: la pestaña activa se expande en una píldora amarilla con su nombre. */
