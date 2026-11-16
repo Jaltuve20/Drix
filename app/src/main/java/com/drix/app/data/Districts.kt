@@ -65,8 +65,18 @@ Villa María del Triunfo,-12.1670,-76.9300,4000,VMT
         District(p[0].trim(), p[1].toDouble(), p[2].toDouble(), p[3].toFloat(), p.getOrNull(4)?.split("|") ?: emptyList())
     }
 
+    private val MARKS = Regex("\\p{Mn}+")
+    private val SPACES = Regex("\\s+")
+
     fun norm(s: String): String =
-        Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "").lowercase()
+        Normalizer.normalize(s, Normalizer.Form.NFD).replace(MARKS, "").lowercase()
+
+    /** Búsqueda rápida por nombre (antes se recorría la lista entera por cada zona en cada redibujado del mapa). */
+    val byName: Map<String, District> = all.associateBy { it.name }
+
+    /** Nombre ya normalizado (sin tildes, minúsculas), calculado una sola vez. */
+    private val normNames: Map<String, String> = all.associate { it.name to norm(it.name) }
+    fun normName(d: District): String = normNames[d.name] ?: norm(d.name)
 
     // (regex del nombre o alias, distrito)
     private val keys: List<Pair<Regex, District>> = all.flatMap { d ->
@@ -84,7 +94,7 @@ Villa María del Triunfo,-12.1670,-76.9300,4000,VMT
         all.filter { dist(it.lat, it.lon, lat, lon) <= it.r }.minByOrNull { dist(it.lat, it.lon, lat, lon) / it.r }
 
     /** Texto en minúsculas, sin tildes y con espacios simples (para buscar palabras bloqueadas). */
-    fun blob(texts: List<String>): String = norm(texts.joinToString(" | ")).replace(Regex("\\s+"), " ")
+    fun blob(texts: List<String>): String = norm(texts.joinToString(" | ")).replace(SPACES, " ")
 
     /**
      * TODOS los distritos que aparecen en el pedido (recojo, destino, comentario…).

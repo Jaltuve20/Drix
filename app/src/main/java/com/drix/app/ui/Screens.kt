@@ -80,7 +80,9 @@ import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import org.osmdroid.config.Configuration
 import org.osmdroid.events.MapEventsReceiver
@@ -205,7 +207,12 @@ fun LabeledField(label: String, value: String, mod: Modifier = Modifier.fillMaxW
 }
 
 @Composable
-private fun Tile(label: String, value: String, mod: Modifier = Modifier, icon: ImageVector? = null) = Column(
+private fun Tile(label: String, value: String, mod: Modifier = Modifier, icon: ImageVector? = null) =
+    Tile(label, { value }, mod, icon)
+
+/** [value] se lee dentro del Text: si cambia 60 veces/seg (contador animado) solo se recompone este texto. */
+@Composable
+private fun Tile(label: String, value: () -> String, mod: Modifier = Modifier, icon: ImageVector? = null) = Column(
     mod.background(Fog, RoundedCornerShape(18.dp)).padding(14.dp)
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -215,7 +222,7 @@ private fun Tile(label: String, value: String, mod: Modifier = Modifier, icon: I
         }
         Text(label, fontSize = 12.sp, color = Muted, maxLines = 1)
     }
-    Text(value, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Ink, letterSpacing = (-0.3).sp, modifier = Modifier.padding(top = 6.dp))
+    Text(value(), fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Ink, letterSpacing = (-0.3).sp, modifier = Modifier.padding(top = 6.dp))
 }
 
 @Composable
@@ -232,6 +239,11 @@ private fun CountPill(icon: ImageVector, n: Int, label: String, tone: Color, mod
         Text(label, fontSize = 11.sp, color = Muted)
     }
 }
+
+/** Texto cuyo contenido viene de un lambda: se recompone él solo. */
+@Composable
+private fun CountText(text: () -> String, modifier: Modifier = Modifier, fontSize: androidx.compose.ui.unit.TextUnit, fontWeight: FontWeight? = null, color: Color, letterSpacing: androidx.compose.ui.unit.TextUnit = androidx.compose.ui.unit.TextUnit.Unspecified) =
+    Text(text(), modifier, color = color, fontSize = fontSize, fontWeight = fontWeight, letterSpacing = letterSpacing)
 
 private fun num(v: Float): String = java.math.BigDecimal(v.toString()).stripTrailingZeros().toPlainString()
 private fun String.asFloat(): Float? = trim().replace(',', '.').toFloatOrNull()
@@ -535,23 +547,31 @@ fun ZonesScreen() {
             }
 
             // Selector de tipo de zona al crear (entra y sale deslizando con rebote)
-            val pick by animateFloatAsState(
-                if (mode == ZoneMode.Create) 1f else 0f,
-                spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow), label = "pick"
-            )
-            if (pick > 0.01f) Surface(
-                Modifier.align(Alignment.BottomCenter).padding(16.dp)
-                    .graphicsLayer { alpha = pick.coerceIn(0f, 1f); translationY = (1f - pick) * 90.dp.toPx() },
-                shape = RoundedCornerShape(50), color = Color.White, shadowElevation = 10.dp
-            ) {
-                Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Seg(Icons.Outlined.Block, "Bloquear", !prefer) { prefer = false }
-                    Seg(Icons.Outlined.CheckCircle, "Preferir", prefer) { prefer = true }
-                }
-            }
+            ZonePicker(mode == ZoneMode.Create, prefer, { prefer = it }, Modifier.align(Alignment.BottomCenter))
         }
     }
     if (searching) DistrictSearchDialog(zones, { searching = false }) { d -> fly = d to ((fly?.second ?: 0) + 1); searching = false }
+}
+
+/** La animación se lee aquí dentro: solo este composable se recompone mientras entra/sale. */
+@Composable
+private fun ZonePicker(visible: Boolean, prefer: Boolean, onPrefer: (Boolean) -> Unit, modifier: Modifier = Modifier) {
+    val pick = animateFloatAsState(
+        if (visible) 1f else 0f,
+        spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMediumLow), label = "pick"
+    )
+    if (visible || pick.value > 0.01f) Surface(
+        modifier.padding(16.dp).graphicsLayer {
+            val v = pick.value
+            alpha = v.coerceIn(0f, 1f); translationY = (1f - v) * 90.dp.toPx()
+        },
+        shape = RoundedCornerShape(50), color = Color.White, shadowElevation = 10.dp
+    ) {
+        Row(Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Seg(Icons.Outlined.Block, "Bloquear", !prefer) { onPrefer(false) }
+            Seg(Icons.Outlined.CheckCircle, "Preferir", prefer) { onPrefer(true) }
+        }
+    }
 }
 
 @Composable
@@ -585,7 +605,7 @@ private fun Seg(icon: ImageVector, text: String, selected: Boolean, onClick: () 
 @Composable
 private fun DistrictSearchDialog(zones: List<Zone>, onDismiss: () -> Unit, onPick: (District) -> Unit) {
     var q by remember { mutableStateOf("") }
-    val shown = Districts.all.filter { Districts.norm(it.name).contains(Districts.norm(q)) }
+    val shown = remember(q) { val nq = Districts.norm(q); Districts.all.filter { Districts.normName(it).contains(nq) } }
     AlertDialog(
         onDismissRequest = onDismiss, containerColor = Color.White,
         title = { Text("Buscar distrito", fontWeight = FontWeight.ExtraBold) },
@@ -610,22 +630,49 @@ private fun DistrictSearchDialog(zones: List<Zone>, onDismiss: () -> Unit, onPic
     )
 }
 
-/** Mapa real (OpenStreetMap, sin API key). Dibuja cada distrito marcado como un círculo naranja. */
+// Posición del mapa recordada entre visitas a la pestaña (el MapView se destruye al salir).
+private var lastCenter: GeoPoint = GeoPoint(-12.0464, -77.0428) // Lima
+private var lastZoom: Double = 11.0
+private var osmReady = false
+
+private fun initOsm(ctx: Context) {
+    if (osmReady) return
+    Configuration.getInstance().apply {
+        load(ctx, ctx.getSharedPreferences("osm", 0))
+        userAgentValue = ctx.packageName // OSM exige identificar la app
+        osmdroidBasePath = File(ctx.cacheDir, "osm"); osmdroidTileCache = File(ctx.cacheDir, "osm/tiles")
+        tileDownloadThreads = 4; tileFileSystemThreads = 4
+        cacheMapTileCount = 24
+    }
+    osmReady = true
+}
+
+/**
+ * Mapa real (OpenStreetMap, sin API key). Dibuja cada distrito marcado como un círculo naranja.
+ * Se crea UN frame después de entrar en la pestaña: así el cambio de pantalla no se atasca construyendo el MapView.
+ */
 @Composable
 fun ZoneMap(zones: List<Zone>, mode: ZoneMode, prefer: Boolean, fly: Pair<District, Int>?, locate: Int, modifier: Modifier = Modifier) {
+    var ready by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { withFrameNanos { }; withFrameNanos { }; ready = true }
+    if (!ready) Box(modifier.background(Color(0xFFE9ECEF)), Alignment.Center) {
+        CircularProgressIndicator(Modifier.size(28.dp), color = YellowDeep, strokeWidth = 3.dp)
+    } else ZoneMapContent(zones, mode, prefer, fly, locate, modifier)
+}
+
+@Composable
+private fun ZoneMapContent(zones: List<Zone>, mode: ZoneMode, prefer: Boolean, fly: Pair<District, Int>?, locate: Int, modifier: Modifier) {
     val ctx = LocalContext.current
     val modeNow by rememberUpdatedState(mode)
     val preferNow by rememberUpdatedState(prefer)
     val map = remember {
-        Configuration.getInstance().apply {
-            load(ctx, ctx.getSharedPreferences("osm", 0))
-            userAgentValue = ctx.packageName // OSM exige identificar la app
-            osmdroidBasePath = File(ctx.cacheDir, "osm"); osmdroidTileCache = File(ctx.cacheDir, "osm/tiles")
-        }
+        initOsm(ctx)
         MapView(ctx).apply {
             setTileSource(TileSourceFactory.MAPNIK); setMultiTouchControls(true)
+            isTilesScaledToDpi = true // tiles al tamaño de la pantalla: muchos menos tiles que descargar y dibujar
+            isHorizontalMapRepetitionEnabled = false; isVerticalMapRepetitionEnabled = false
             zoomController.setVisibility(org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER)
-            controller.setZoom(11.0); controller.setCenter(GeoPoint(-12.0464, -77.0428)) // Lima
+            controller.setZoom(lastZoom); controller.setCenter(lastCenter)
             overlays.add(MapEventsOverlay(object : MapEventsReceiver {
                 override fun singleTapConfirmedHelper(p: GeoPoint): Boolean {
                     val m = modeNow
@@ -663,23 +710,34 @@ fun ZoneMap(zones: List<Zone>, mode: ZoneMode, prefer: Boolean, fly: Pair<Distri
     LaunchedEffect(fly) {
         fly?.let { (d, _) -> map.controller.setZoom(12.5); map.controller.animateTo(GeoPoint(d.lat, d.lon)) }
     }
-    DisposableEffect(map) { map.onResume(); onDispose { map.onPause(); me.disableMyLocation() } }
+    DisposableEffect(map) {
+        map.onResume()
+        onDispose {
+            lastCenter = GeoPoint(map.mapCenter.latitude, map.mapCenter.longitude); lastZoom = map.zoomLevelDouble
+            map.onPause(); me.disableMyLocation()
+        }
+    }
 
+    // Último conjunto de zonas dibujado: si solo cambió el modo/«preferir» NO se reconstruyen los polígonos.
+    val drawn = remember { arrayOfNulls<List<Zone>>(1) }
     AndroidView(
         factory = { map }, modifier = modifier,
         update = { m ->
-            m.overlays.removeAll { it is Polygon }
-            zones.forEach { z ->
-                val d = Districts.all.firstOrNull { it.name == z.name } ?: return@forEach
-                m.overlays.add(Polygon(m).apply {
-                    points = Polygon.pointsAsCircle(GeoPoint(d.lat, d.lon), d.r.toDouble())
-                    fillPaint.color = (if (z.accept) 0x4022C55E else 0x40FF6B1A).toInt()
-                    outlinePaint.color = (if (z.accept) 0xFF16A34A else 0xFFE8541E).toInt()
-                    outlinePaint.strokeWidth = 5f
-                    setOnClickListener { _, _, _ -> false } // deja pasar el toque al mapa
-                })
+            if (drawn[0] != zones) {
+                drawn[0] = zones
+                m.overlays.removeAll { it is Polygon }
+                zones.forEach { z ->
+                    val d = Districts.byName[z.name] ?: return@forEach
+                    m.overlays.add(Polygon(m).apply {
+                        points = Polygon.pointsAsCircle(GeoPoint(d.lat, d.lon), d.r.toDouble())
+                        fillPaint.color = (if (z.accept) 0x4022C55E else 0x40FF6B1A).toInt()
+                        outlinePaint.color = (if (z.accept) 0xFF16A34A else 0xFFE8541E).toInt()
+                        outlinePaint.strokeWidth = 5f
+                        setOnClickListener { _, _, _ -> false } // deja pasar el toque al mapa
+                    })
+                }
+                m.invalidate()
             }
-            m.invalidate()
         }
     )
 }
@@ -769,6 +827,9 @@ fun ExtrasScreen() {
     val avg = if (t.orders > 0) fare / t.orders else 0f
     val perKm = if (km > 0f) fare / km else 0f
     val shape = RoundedCornerShape(26.dp)
+    // States: se leen SOLO dentro de los Text/Tile de abajo (antes recomponían la pantalla entera en cada frame)
+    val fareA = rememberCountUp(fare); val ordersA = rememberCountUp(t.orders.toFloat()); val kmA = rememberCountUp(km)
+    val avgA = rememberCountUp(avg); val perKmA = rememberCountUp(perKm)
 
     Screen(hero = {
         Brand(); Spacer(Modifier.height(20.dp))
@@ -784,18 +845,18 @@ fun ExtrasScreen() {
                 Spacer(Modifier.width(8.dp))
                 Text("Dinero de hoy", fontSize = 13.sp, color = Color.White.copy(alpha = .7f))
             }
-            Text("S/ %.2f".format(rememberCountUp(fare)), fontSize = 44.sp, fontWeight = FontWeight.ExtraBold, color = Yellow, letterSpacing = (-1).sp, modifier = Modifier.padding(top = 6.dp))
-            Text("${rememberCountUp(t.orders.toFloat()).toInt()} pedidos aceptados", fontSize = 12.sp, color = Color.White.copy(alpha = .6f))
+            CountText({ "S/ %.2f".format(fareA.value) }, fontSize = 44.sp, fontWeight = FontWeight.ExtraBold, color = Yellow, letterSpacing = (-1).sp, modifier = Modifier.padding(top = 6.dp))
+            CountText({ "${ordersA.value.toInt()} pedidos aceptados" }, fontSize = 12.sp, color = Color.White.copy(alpha = .6f))
         }
         DCard(index = 1) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Tile("Pedidos", rememberCountUp(t.orders.toFloat()).toInt().toString(), Modifier.weight(1f), Icons.Outlined.Receipt)
-                Tile("Km recorridos", "%.1f km".format(rememberCountUp(km)), Modifier.weight(1f), Icons.Outlined.Route)
+                Tile("Pedidos", { ordersA.value.toInt().toString() }, Modifier.weight(1f), Icons.Outlined.Receipt)
+                Tile("Km recorridos", { "%.1f km".format(kmA.value) }, Modifier.weight(1f), Icons.Outlined.Route)
             }
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Tile("Promedio/pedido", "S/ %.2f".format(rememberCountUp(avg)), Modifier.weight(1f), Icons.Outlined.Payments)
-                Tile("Ganancia por km", "S/ %.2f".format(rememberCountUp(perKm)), Modifier.weight(1f), Icons.Outlined.Speed)
+                Tile("Promedio/pedido", { "S/ %.2f".format(avgA.value) }, Modifier.weight(1f), Icons.Outlined.Payments)
+                Tile("Ganancia por km", { "S/ %.2f".format(perKmA.value) }, Modifier.weight(1f), Icons.Outlined.Speed)
             }
         }
         DCard(index = 2) {
@@ -876,6 +937,21 @@ private fun CountTile(value: Long, label: String, color: Color, mod: Modifier) {
 
 /* ═════════════ SELECTOR DE APP OBJETIVO ═════════════ */
 
+class AppInfo(val label: String?, val icon: androidx.compose.ui.graphics.ImageBitmap?)
+
+/** Caché en memoria de etiqueta + icono por paquete (cargarlos cuesta una llamada al sistema). */
+object AppInfoCache {
+    private val map = java.util.concurrent.ConcurrentHashMap<String, AppInfo>()
+    fun peek(pkg: String): AppInfo? = map[pkg]
+    fun load(ctx: Context, pkg: String): AppInfo {
+        map[pkg]?.let { return it }
+        val pm = ctx.packageManager
+        val label = runCatching { pm.getApplicationInfo(pkg, 0).loadLabel(pm).toString() }.getOrNull()
+        val icon = runCatching { pm.getApplicationIcon(pkg).toBitmap(112, 112).asImageBitmap() }.getOrNull()
+        return AppInfo(label, icon).also { map[pkg] = it }
+    }
+}
+
 data class AppItem(val label: String, val pkg: String)
 
 @Composable
@@ -883,10 +959,12 @@ fun TargetAppCard(index: Int = 0) {
     val ctx = LocalContext.current
     val cfg by DrixPrefs.cfg.collectAsStateWithLifecycle()
     var open by remember { mutableStateOf(false) }
-    val label = remember(cfg.targetPkg) {
-        runCatching { ctx.packageManager.getApplicationInfo(cfg.targetPkg, 0).loadLabel(ctx.packageManager).toString() }.getOrNull()
+    // Antes: loadLabel + getApplicationIcon + toBitmap se ejecutaban EN EL HILO PRINCIPAL al entrar en Inicio (IPC al PackageManager).
+    val info by produceState(AppInfoCache.peek(cfg.targetPkg), cfg.targetPkg) {
+        value = AppInfoCache.peek(cfg.targetPkg) ?: withContext(Dispatchers.IO) { AppInfoCache.load(ctx, cfg.targetPkg) }
     }
-    val icon = remember(cfg.targetPkg) { runCatching { ctx.packageManager.getApplicationIcon(cfg.targetPkg).toBitmap(112, 112).asImageBitmap() }.getOrNull() }
+    val label = info?.label
+    val icon = info?.icon
     DCard(index = index) {
         SectionTitle(Icons.Outlined.Apps, "App objetivo")
         Row(Modifier.fillMaxWidth().background(Fog, RoundedCornerShape(18.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -908,13 +986,15 @@ fun AppPickerDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
     val ctx = LocalContext.current
     val pm = ctx.packageManager
     var q by remember { mutableStateOf("") }
-    val apps = remember {
-        val i = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        pm.queryIntentActivities(i, 0)
-            .map { AppItem(it.loadLabel(pm).toString(), it.activityInfo.packageName) }
-            .filter { it.pkg != ctx.packageName }.distinctBy { it.pkg }.sortedBy { it.label.lowercase() }
+    val apps by produceState<List<AppItem>>(emptyList()) {
+        value = withContext(Dispatchers.Default) {
+            val i = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            pm.queryIntentActivities(i, 0)
+                .map { AppItem(it.loadLabel(pm).toString(), it.activityInfo.packageName) }
+                .filter { it.pkg != ctx.packageName }.distinctBy { it.pkg }.sortedBy { it.label.lowercase() }
+        }
     }
-    val shown = apps.filter { it.label.contains(q, true) || it.pkg.contains(q, true) }
+    val shown = remember(apps, q) { apps.filter { it.label.contains(q, true) || it.pkg.contains(q, true) } }
     AlertDialog(
         onDismissRequest = onDismiss, containerColor = Color.White,
         title = { Text("Elige la app a automatizar") },
@@ -925,7 +1005,9 @@ fun AppPickerDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
                     colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Yellow, cursorColor = Yellow))
                 LazyColumn(Modifier.heightIn(max = 380.dp).padding(top = 8.dp)) {
                     items(shown, key = { it.pkg }) { a ->
-                        val icon = remember(a.pkg) { runCatching { pm.getApplicationIcon(a.pkg).toBitmap(96, 96).asImageBitmap() }.getOrNull() }
+                        val icon by produceState(AppInfoCache.peek(a.pkg)?.icon, a.pkg) {
+                            value = value ?: withContext(Dispatchers.IO) { AppInfoCache.load(ctx, a.pkg).icon }
+                        }
                         Row(Modifier.fillMaxWidth().clickable { onPick(a.pkg) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             icon?.let { Image(it, null, Modifier.size(40.dp)) }
                             Spacer(Modifier.width(12.dp))

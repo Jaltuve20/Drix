@@ -184,22 +184,15 @@ fun DrixApp(profile: Profile) {
         bottomBar = { DrixNavBar(tab) { tab = it } }
     ) { pad ->
         Box(Modifier.padding(pad).fillMaxSize()) {
-            AnimatedContent(
-                targetState = tab,
-                transitionSpec = {
-                    val dir = if (targetState > initialState) 1 else -1
-                    (fadeIn(tween(300, delayMillis = 90)) + slideInHorizontally(tween(360, easing = FastOutSlowInEasing)) { it / 12 * dir }) togetherWith
-                        fadeOut(tween(120))
-                },
-                label = "tabs"
-            ) { t ->
-                when (t) {
-                    0 -> HomeScreen { tab = it }
-                    1 -> ParamsScreen()
-                    2 -> ZonesScreen()
-                    3 -> ExtrasScreen()
-                    else -> ProfileScreen(profile) { showAdmin = true }
-                }
+            // Cambio de pestaña SIN AnimatedContent: antes se componían dos pantallas a la vez (la que sale y la que entra)
+            // con deslizamiento + fundido, y al entrar en «Zonas» además se creaba el mapa en pleno movimiento.
+            // Ahora se compone solo la pantalla activa; cada tarjeta ya hace su propia entrada ligera.
+            when (tab) {
+                0 -> HomeScreen { tab = it }
+                1 -> ParamsScreen()
+                2 -> ZonesScreen()
+                3 -> ExtrasScreen()
+                else -> ProfileScreen(profile) { showAdmin = true }
             }
         }
     }
@@ -230,12 +223,11 @@ private fun NavItem(t: Tab, sel: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.pressScale(src, .92f).clip(RoundedCornerShape(18.dp)).background(bg)
             .clickable(interactionSource = src, indication = LocalIndication.current, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp)
-            .animateContentSize(spring(Spring.DampingRatioLowBouncy, Spring.StiffnessMediumLow)),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(t.icon, t.label, tint = tint, modifier = Modifier.size(24.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale })
-        AnimatedVisibility(sel, enter = expandHorizontally() + fadeIn(), exit = shrinkHorizontally() + fadeOut()) {
+        AnimatedVisibility(sel, enter = expandHorizontally(tween(220)) + fadeIn(tween(220)), exit = shrinkHorizontally(tween(180)) + fadeOut(tween(120))) {
             Text(t.label, Modifier.padding(start = 6.dp), color = tint, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
         }
     }

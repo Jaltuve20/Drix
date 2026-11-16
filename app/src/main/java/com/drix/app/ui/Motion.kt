@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -33,12 +34,14 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /* ═════════════ Colores extra (derivados de la paleta Drix) ═════════════ */
 
@@ -48,15 +51,20 @@ val Danger = Color(0xFFDC2626)
 
 /* ═════════════ Entradas ═════════════ */
 
-/** Aparece deslizando hacia arriba con fundido. [index] escalona la entrada de varias tarjetas. */
+/**
+ * Aparece deslizando hacia arriba con fundido. [index] escalona la entrada de varias tarjetas.
+ * Optimizado: ModulatedAlpha evita crear un buffer offscreen por tarjeta (muy caro con sombras),
+ * la animación es corta y el escalón máximo es pequeño para que nunca haya decenas de capas animadas a la vez.
+ */
 @Composable
-fun Modifier.enter(index: Int = 0, dy: Dp = 22.dp): Modifier {
+fun Modifier.enter(index: Int = 0, dy: Dp = 16.dp): Modifier {
     val a = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
-        delay(index.coerceAtMost(8) * 70L)
-        a.animateTo(1f, tween(520, easing = FastOutSlowInEasing))
+        delay(index.coerceAtMost(3) * 40L)
+        a.animateTo(1f, tween(280, easing = FastOutSlowInEasing))
     }
     return this.graphicsLayer {
+        compositingStrategy = CompositingStrategy.ModulatedAlpha
         alpha = a.value
         translationY = (1f - a.value) * dy.toPx()
     }
@@ -69,13 +77,11 @@ fun Modifier.popIn(delayMs: Long = 0L): Modifier {
     val a = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         delay(delayMs)
-        a.animateTo(1f, tween(260))
-    }
-    LaunchedEffect(Unit) {
-        delay(delayMs)
-        s.animateTo(1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow))
+        launch { a.animateTo(1f, tween(220)) }
+        s.animateTo(1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium))
     }
     return this.graphicsLayer {
+        compositingStrategy = CompositingStrategy.ModulatedAlpha
         alpha = a.value
         scaleX = s.value; scaleY = s.value
     }
@@ -96,12 +102,16 @@ fun Modifier.pressScale(src: MutableInteractionSource, to: Float = 0.95f): Modif
 
 /* ═════════════ Números ═════════════ */
 
-/** Cuenta desde 0 hasta [target] la primera vez, y luego sigue los cambios con suavidad. */
+/**
+ * Cuenta desde 0 hasta [target] la primera vez, y luego sigue los cambios con suavidad.
+ * Devuelve un State: quien lo lea dentro de un lambda (o en un composable pequeño) recompone SOLO ese trozo,
+ * no la pantalla entera 60 veces por segundo.
+ */
 @Composable
-fun rememberCountUp(target: Float, durationMs: Int = 900): Float {
+fun rememberCountUp(target: Float, durationMs: Int = 700): State<Float> {
     val a = remember { Animatable(0f) }
     LaunchedEffect(target) { a.animateTo(target, tween(durationMs, easing = FastOutSlowInEasing)) }
-    return a.value
+    return a.asState()
 }
 
 /* ═════════════ Fondo en movimiento ═════════════ */
@@ -113,20 +123,26 @@ fun rememberCountUp(target: Float, durationMs: Int = 900): Float {
 @Composable
 fun Modifier.heroMotion(): Modifier {
     val t = rememberInfiniteTransition(label = "hero")
-    val p by t.animateFloat(0f, 1f, infiniteRepeatable(tween(16000, easing = LinearEasing), RepeatMode.Restart), label = "p")
+    val p = t.animateFloat(0f, 1f, infiniteRepeatable(tween(20000, easing = LinearEasing), RepeatMode.Restart), label = "p")
+    val white17 = remember { Color.White.copy(alpha = .17f) }
+    val ink05 = remember { Ink.copy(alpha = .05f) }
+    val white11 = remember { Color.White.copy(alpha = .11f) }
+    val white20 = remember { Color.White.copy(alpha = .20f) }
     return this.drawBehind {
+        val pv = p.value
         val w = size.width; val h = size.height
-        val a = p * 2f * Math.PI.toFloat()
-        drawCircle(Color.White.copy(alpha = .17f), h * .58f, Offset(w * .94f + cos(a) * 18f, h * .10f + sin(a) * 14f))
-        drawCircle(Ink.copy(alpha = .05f), h * .42f, Offset(w * .02f + cos(a + 2f) * 16f, h * .98f + sin(a + 1f) * 10f))
-        drawCircle(Color.White.copy(alpha = .11f), h * .20f, Offset(w * .60f + cos(a + 4f) * 22f, h * .88f + sin(a + 3f) * 8f))
+        val a = pv * 2f * Math.PI.toFloat()
+        drawCircle(white17, h * .58f, Offset(w * .94f + cos(a) * 18f, h * .10f + sin(a) * 14f))
+        drawCircle(ink05, h * .42f, Offset(w * .02f + cos(a + 2f) * 16f, h * .98f + sin(a + 1f) * 10f))
+        drawCircle(white11, h * .20f, Offset(w * .60f + cos(a + 4f) * 22f, h * .88f + sin(a + 3f) * 8f))
         // líneas de velocidad
         val barH = 7.dp.toPx()
+        val corner = CornerRadius(barH)
         for (i in 0..2) {
             val len = (110 + i * 46).dp.toPx()
-            val x = (((p + i * 0.33f) % 1f) * (w + len * 2f)) - len
+            val x = (((pv + i * 0.33f) % 1f) * (w + len * 2f)) - len
             val y = h * (0.22f + i * 0.20f)
-            drawRoundRect(Color.White.copy(alpha = .20f), Offset(x, y), Size(len, barH), CornerRadius(barH))
+            drawRoundRect(white20, Offset(x, y), Size(len, barH), corner)
         }
     }
 }
