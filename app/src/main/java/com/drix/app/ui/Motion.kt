@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -57,12 +58,9 @@ val Danger = Color(0xFFDC2626)
  * la animación es corta y el escalón máximo es pequeño para que nunca haya decenas de capas animadas a la vez.
  */
 @Composable
-fun Modifier.enter(index: Int = 0, dy: Dp = 16.dp): Modifier {
+fun Modifier.enter(index: Int = 0, dy: Dp = 10.dp): Modifier {
     val a = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        delay(index.coerceAtMost(3) * 40L)
-        a.animateTo(1f, tween(280, easing = FastOutSlowInEasing))
-    }
+    LaunchedEffect(Unit) { a.animateTo(1f, tween(200, easing = FastOutSlowInEasing)) }
     return this.graphicsLayer {
         compositingStrategy = CompositingStrategy.ModulateAlpha
         alpha = a.value
@@ -121,28 +119,20 @@ fun rememberCountUp(target: Float, durationMs: Int = 700): State<Float> {
  * que cruzan despacio. Se dibuja sobre el fondo ya pintado.
  */
 @Composable
-fun Modifier.heroMotion(): Modifier {
-    val t = rememberInfiniteTransition(label = "hero")
-    val p = t.animateFloat(0f, 1f, infiniteRepeatable(tween(20000, easing = LinearEasing), RepeatMode.Restart), label = "p")
-    val white17 = remember { Color.White.copy(alpha = .17f) }
-    val ink05 = remember { Ink.copy(alpha = .05f) }
-    val white11 = remember { Color.White.copy(alpha = .11f) }
-    val white20 = remember { Color.White.copy(alpha = .20f) }
-    return this.drawBehind {
-        val pv = p.value
-        val w = size.width; val h = size.height
-        val a = pv * 2f * Math.PI.toFloat()
-        drawCircle(white17, h * .58f, Offset(w * .94f + cos(a) * 18f, h * .10f + sin(a) * 14f))
-        drawCircle(ink05, h * .42f, Offset(w * .02f + cos(a + 2f) * 16f, h * .98f + sin(a + 1f) * 10f))
-        drawCircle(white11, h * .20f, Offset(w * .60f + cos(a + 4f) * 22f, h * .88f + sin(a + 3f) * 8f))
-        // líneas de velocidad
-        val barH = 7.dp.toPx()
-        val corner = CornerRadius(barH)
+fun Modifier.heroMotion(): Modifier = this.drawWithCache {
+    // ESTÁTICO a propósito: antes una animación infinita redibujaba el encabezado entero 60 veces/seg en cada pantalla,
+    // lo que en teléfonos modestos dejaba sin tiempo al cambio de pestaña. Se dibuja una sola vez y queda en caché.
+    val w = size.width; val h = size.height
+    val white17 = Color.White.copy(alpha = .17f); val ink05 = Ink.copy(alpha = .05f)
+    val white11 = Color.White.copy(alpha = .11f); val white20 = Color.White.copy(alpha = .20f)
+    val barH = 7.dp.toPx(); val corner = CornerRadius(barH)
+    onDrawBehind {
+        drawCircle(white17, h * .58f, Offset(w * .94f, h * .10f))
+        drawCircle(ink05, h * .42f, Offset(w * .02f, h * .98f))
+        drawCircle(white11, h * .20f, Offset(w * .60f, h * .88f))
         for (i in 0..2) {
             val len = (110 + i * 46).dp.toPx()
-            val x = (((pv + i * 0.33f) % 1f) * (w + len * 2f)) - len
-            val y = h * (0.22f + i * 0.20f)
-            drawRoundRect(white20, Offset(x, y), Size(len, barH), corner)
+            drawRoundRect(white20, Offset(w * (.50f + i * .12f), h * (0.22f + i * 0.20f)), Size(len, barH), corner)
         }
     }
 }

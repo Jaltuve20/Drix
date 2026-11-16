@@ -44,6 +44,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -102,7 +103,6 @@ fun DCard(mod: Modifier = Modifier, index: Int = 0, content: @Composable ColumnS
     val shape = RoundedCornerShape(24.dp)
     Column(
         mod.fillMaxWidth().enter(index)
-            .shadow(10.dp, shape, ambientColor = Ink.copy(alpha = .06f), spotColor = Ink.copy(alpha = .14f))
             .clip(shape).background(Color.White).border(1.dp, Hairline, shape).padding(18.dp),
         content = content
     )
@@ -169,7 +169,6 @@ fun PillButton(
     val shape = RoundedCornerShape(16.dp)
     Row(
         mod.height(54.dp).pressScale(src)
-            .shadow(if (color == Yellow) 8.dp else 0.dp, shape, ambientColor = Yellow.copy(alpha = .5f), spotColor = YellowDeep.copy(alpha = .6f))
             .clip(shape)
             .background(Brush.verticalGradient(listOf(lerp(bg, Color.White, .14f), bg)))
             .clickable(interactionSource = src, indication = LocalIndication.current, enabled = !loading, role = Role.Button) {
@@ -191,17 +190,28 @@ fun PillButton(
     }
 }
 
+/** Campo de texto LIGERO (BasicTextField). OutlinedTextField de Material3 es muy pesado de componer y Parámetros tiene 8. */
 @Composable
 fun LabeledField(label: String, value: String, mod: Modifier = Modifier.fillMaxWidth(), decimal: Boolean = true, keyboard: KeyboardType? = null, onChange: (String) -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(14.dp)
     Column(mod) {
         Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink.copy(alpha = .8f), modifier = Modifier.padding(bottom = 6.dp))
-        OutlinedTextField(
-            value, onChange, singleLine = true, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth(),
+        androidx.compose.foundation.text.BasicTextField(
+            value = value, onValueChange = onChange, singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(color = Ink, fontSize = 16.sp),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(Ink),
             keyboardOptions = KeyboardOptions(keyboardType = keyboard ?: if (decimal) KeyboardType.Decimal else KeyboardType.Number),
-            colors = OutlinedTextFieldDefaults.colors(
-                unfocusedBorderColor = Line, focusedBorderColor = YellowDeep, cursorColor = Ink,
-                unfocusedContainerColor = Fog, focusedContainerColor = Color.White
-            )
+            modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
+            decorationBox = { inner ->
+                Box(
+                    Modifier.fillMaxWidth().height(56.dp)
+                        .background(if (focused) Color.White else Fog, shape)
+                        .border(if (focused) 2.dp else 1.dp, if (focused) YellowDeep else Line, shape)
+                        .padding(horizontal = 16.dp),
+                    Alignment.CenterStart
+                ) { inner() }
+            }
         )
     }
 }
@@ -258,7 +268,6 @@ private fun StatusCard(enabled: Boolean, onToggle: (Boolean) -> Unit) {
     val dot by animateColorAsState(if (enabled) Go else Color(0xFFEF4444), tween(400), label = "dot")
     Row(
         Modifier.fillMaxWidth().enter(0)
-            .shadow(14.dp, shape, ambientColor = Ink.copy(alpha = .15f), spotColor = Ink.copy(alpha = .3f))
             .clip(shape)
             .background(Brush.linearGradient(listOf(Charcoal, Ink)))
             .drawBehind {
@@ -837,7 +846,6 @@ fun ExtrasScreen() {
     }) {
         Column(
             Modifier.fillMaxWidth().enter(0)
-                .shadow(14.dp, shape, ambientColor = Ink.copy(alpha = .15f), spotColor = Ink.copy(alpha = .3f))
                 .clip(shape).background(Brush.linearGradient(listOf(Charcoal, Ink))).padding(22.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
