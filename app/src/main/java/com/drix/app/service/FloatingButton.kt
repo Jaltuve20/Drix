@@ -137,7 +137,7 @@ class FloatingButton(private val ctx: Context, scope: CoroutineScope) {
 
         return LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            if (right) { addView(pn); addView(bubble) } else { addView(bubble); addView(pn) }
+            if (this@FloatingButton.right) { addView(pn); addView(bubble) } else { addView(bubble); addView(pn) }
         }
     }
 
