@@ -52,15 +52,26 @@ val Danger = Color(0xFFDC2626)
 
 /* ═════════════ Entradas ═════════════ */
 
+/** Indica si la pestaña que contiene este contenido está visible. Las pestañas viven siempre (KeepAlive); esto permite re-animar al volver a ellas. */
+val LocalTabActive = androidx.compose.runtime.compositionLocalOf { true }
+
 /**
- * Aparece deslizando hacia arriba con fundido. [index] escalona la entrada de varias tarjetas.
- * Optimizado: ModulateAlpha evita crear un buffer offscreen por tarjeta (muy caro con sombras),
- * la animación es corta y el escalón máximo es pequeño para que nunca haya decenas de capas animadas a la vez.
+ * Aparece deslizando hacia arriba con fundido y ESCALONADO real: cada [index] espera 45 ms más (máx. 6 escalones).
+ * Dentro de una pestaña se repite cada vez que la pestaña se muestra, así el cambio de pestaña "se siente" vivo.
+ * Optimizado: ModulateAlpha evita un buffer offscreen por tarjeta y el valor se lee SOLO dentro de graphicsLayer
+ * (sin recomponer nada): es trabajo de dibujo, no de composición.
  */
 @Composable
-fun Modifier.enter(index: Int = 0, dy: Dp = 10.dp): Modifier {
+fun Modifier.enter(index: Int = 0, dy: Dp = 14.dp): Modifier {
+    val active = LocalTabActive.current
     val a = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { a.animateTo(1f, tween(200, easing = FastOutSlowInEasing)) }
+    LaunchedEffect(active) {
+        if (!active) a.snapTo(0f)
+        else {
+            delay(index.coerceIn(0, 6) * 45L)
+            a.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
+        }
+    }
     return this.graphicsLayer {
         compositingStrategy = CompositingStrategy.ModulateAlpha
         alpha = a.value
@@ -188,4 +199,35 @@ fun Modifier.bob(amplitude: Dp = 6.dp, durationMs: Int = 1800): Modifier {
     val t = rememberInfiniteTransition(label = "bob")
     val v by t.animateFloat(-1f, 1f, infiniteRepeatable(tween(durationMs, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "bv")
     return this.graphicsLayer { translationY = v * amplitude.toPx() }
+}
+
+/* ═════════════ Extras v2 ═════════════ */
+
+/** Punto de estado SIN animación infinita (barato): solo cambia de color suavemente. Úsalo en cabeceras que viven siempre. */
+@Composable
+fun StatusDot(on: Boolean, diameter: Dp = 9.dp) {
+    val c by androidx.compose.animation.animateColorAsState(if (on) Go else Color(0xFFEF4444), tween(350), label = "sdot")
+    Box(Modifier.size(diameter).background(c, CircleShape))
+}
+
+/** Barrido de brillo de una sola pasada (no infinito). Útil para llamar la atención sobre algo recién cambiado. */
+@Composable
+fun Modifier.sweepOnce(trigger: Any?, color: Color = Color.White.copy(alpha = .35f)): Modifier {
+    val p = remember { Animatable(1f) }
+    LaunchedEffect(trigger) { p.snapTo(0f); p.animateTo(1f, tween(700, easing = FastOutSlowInEasing)) }
+    return this.drawWithCache {
+        onDrawWithContent {
+            drawContent()
+            val v = p.value
+            if (v < 1f) {
+                val w = size.width * .35f
+                val x = -w + (size.width + w * 2f) * v
+                drawRect(
+                    androidx.compose.ui.graphics.Brush.horizontalGradient(
+                        listOf(Color.Transparent, color, Color.Transparent), startX = x, endX = x + w
+                    )
+                )
+            }
+        }
+    }
 }

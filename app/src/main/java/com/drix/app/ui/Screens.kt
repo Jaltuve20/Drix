@@ -5,12 +5,19 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -68,6 +75,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import com.drix.app.auth.AuthRepo
 import com.drix.app.auth.Profile
 import com.drix.app.data.*
@@ -190,29 +200,120 @@ fun PillButton(
     }
 }
 
-/** Campo de texto LIGERO (BasicTextField). OutlinedTextField de Material3 es muy pesado de componer y Parámetros tiene 8. */
+/** Campo de texto LIGERO (BasicTextField). OutlinedTextField de Material3 es muy pesado de componer y Parámetros tiene 8. [suffix] = unidad (km, S/, ms…). */
 @Composable
-fun LabeledField(label: String, value: String, mod: Modifier = Modifier.fillMaxWidth(), decimal: Boolean = true, keyboard: KeyboardType? = null, onChange: (String) -> Unit) {
+fun LabeledField(label: String, value: String, mod: Modifier = Modifier.fillMaxWidth(), decimal: Boolean = true, keyboard: KeyboardType? = null, suffix: String? = null, onChange: (String) -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(14.dp)
+    val border by animateColorAsState(if (focused) YellowDeep else Line, tween(150), label = "fb")
     Column(mod) {
-        Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink.copy(alpha = .8f), modifier = Modifier.padding(bottom = 6.dp))
+        Text(label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ink.copy(alpha = .8f), modifier = Modifier.padding(bottom = 6.dp), maxLines = 1)
         androidx.compose.foundation.text.BasicTextField(
             value = value, onValueChange = onChange, singleLine = true,
-            textStyle = androidx.compose.ui.text.TextStyle(color = Ink, fontSize = 16.sp),
+            textStyle = androidx.compose.ui.text.TextStyle(color = Ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(Ink),
             keyboardOptions = KeyboardOptions(keyboardType = keyboard ?: if (decimal) KeyboardType.Decimal else KeyboardType.Number),
             modifier = Modifier.fillMaxWidth().onFocusChanged { focused = it.isFocused },
             decorationBox = { inner ->
-                Box(
+                Row(
                     Modifier.fillMaxWidth().height(56.dp)
                         .background(if (focused) Color.White else Fog, shape)
-                        .border(if (focused) 2.dp else 1.dp, if (focused) YellowDeep else Line, shape)
+                        .border(if (focused) 2.dp else 1.dp, border, shape)
                         .padding(horizontal = 16.dp),
-                    Alignment.CenterStart
-                ) { inner() }
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(Modifier.weight(1f)) { inner() }
+                    if (suffix != null) Text(suffix, color = Muted, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
             }
         )
+    }
+}
+
+/** Fila con interruptor sobre fondo suave (mismo estilo en toda la app). */
+@Composable
+fun SwitchRow(text: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().background(Fog, RoundedCornerShape(16.dp)).padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text, Modifier.weight(1f), fontSize = 14.sp, lineHeight = 18.sp)
+        Switch(checked, onChange, colors = SwitchDefaults.colors(checkedTrackColor = Go, checkedThumbColor = Color.White))
+    }
+}
+
+/** Botón secundario (solo borde). Jerarquía: relleno = acción principal, borde = secundaria, rojo = destructiva. */
+@Composable
+fun GhostButton(text: String, mod: Modifier = Modifier.fillMaxWidth(), tone: Color = Ink, icon: ImageVector? = null, onClick: () -> Unit) {
+    val src = remember { MutableInteractionSource() }
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        mod.height(54.dp).pressScale(src, .97f).clip(shape)
+            .border(1.5.dp, if (tone == Ink) Line else tone.copy(alpha = .45f), shape)
+            .clickable(interactionSource = src, indication = LocalIndication.current, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 14.dp),
+        horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (icon != null) { Icon(icon, null, tint = tone, modifier = Modifier.size(19.dp)); Spacer(Modifier.width(8.dp)) }
+        Text(text, color = tone, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
+    }
+}
+
+/** Dato de solo lectura: icono, etiqueta pequeña y valor. Se apilan con una línea fina entre ellos. */
+@Composable
+fun InfoRow(icon: ImageVector, label: String, value: String, divider: Boolean = true) {
+    Column {
+        Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(34.dp).background(Tint, CircleShape), Alignment.Center) { Icon(icon, null, tint = Amber, modifier = Modifier.size(17.dp)) }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(label, fontSize = 12.sp, color = Muted)
+                Text(value, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        if (divider) Box(Modifier.fillMaxWidth().height(1.dp).background(Hairline))
+    }
+}
+
+/** Selector de 2-3 opciones con una píldora amarilla que DESLIZA hasta la opción elegida. */
+@Composable
+fun SegmentedChoice(labels: List<String>, selected: Int, onSelect: (Int) -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    BoxWithConstraints(Modifier.fillMaxWidth().background(Fog, shape).padding(4.dp)) {
+        val seg = maxWidth / labels.size
+        val x by animateDpAsState(seg * selected, spring(Spring.DampingRatioLowBouncy, Spring.StiffnessMediumLow), label = "segx")
+        Box(Modifier.offset(x = x).width(seg).height(44.dp).background(Yellow, RoundedCornerShape(12.dp)))
+        Row {
+            labels.forEachIndexed { i, l ->
+                Box(
+                    Modifier.weight(1f).height(44.dp).clip(RoundedCornerShape(12.dp))
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onSelect(i) },
+                    Alignment.Center
+                ) { Text(l, fontWeight = if (i == selected) FontWeight.ExtraBold else FontWeight.SemiBold, fontSize = 13.sp, color = Ink, maxLines = 1) }
+            }
+        }
+    }
+}
+
+/** Fila superior de cada cabecera amarilla: marca + estado global (Activa/Pausada) para saber siempre si Drix está trabajando. */
+@Composable
+fun HeroTop() {
+    val cfg by DrixPrefs.cfg.collectAsStateWithLifecycle()
+    Row(Modifier.fillMaxWidth().padding(bottom = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+        Brand()
+        Spacer(Modifier.weight(1f))
+        Row(
+            Modifier.background(Ink.copy(alpha = .9f), RoundedCornerShape(50)).padding(start = 11.dp, end = 13.dp, top = 7.dp, bottom = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            StatusDot(cfg.enabled)
+            Spacer(Modifier.width(7.dp))
+            AnimatedContent(
+                cfg.enabled,
+                transitionSpec = { (fadeIn(tween(200)) + slideInVertically { it / 2 }) togetherWith (fadeOut(tween(120)) + slideOutVertically { -it / 2 }) },
+                label = "chip"
+            ) { on -> Text(if (on) "Activa" else "Pausada", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+        }
     }
 }
 
@@ -246,7 +347,7 @@ private fun CountPill(icon: ImageVector, n: Int, label: String, tone: Color, mod
         AnimatedContent(n, transitionSpec = { (slideInVertically { -it } + fadeIn()) togetherWith (slideOutVertically { it } + fadeOut()) }, label = "cp") { v ->
             Text(v.toString(), fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = Ink)
         }
-        Text(label, fontSize = 11.sp, color = Muted)
+        Text(label, fontSize = 12.sp, color = Muted)
     }
 }
 
@@ -260,46 +361,120 @@ private fun String.asFloat(): Float? = trim().replace(',', '.').toFloatOrNull()
 
 /* ═════════════ INICIO ═════════════ */
 
-/** Tarjeta oscura de estado: ondas tipo radar y resplandor verde cuando la automatización está activa. */
+/** Mini-dato del resumen de hoy dentro de la tarjeta oscura. [value] se lee dentro del Text (solo se recompone él). */
 @Composable
-private fun StatusCard(enabled: Boolean, onToggle: (Boolean) -> Unit) {
+private fun MiniStat(value: () -> String, label: String, modifier: Modifier = Modifier) = Column(modifier) {
+    CountText(value, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+    Text(label, fontSize = 11.sp, color = Color.White.copy(alpha = .55f))
+}
+
+/** Tarjeta oscura de estado: resplandor verde si está activa, interruptor y resumen de HOY (dinero · pedidos · km). */
+@Composable
+private fun StatusCard(enabled: Boolean, today: DayStats, onToggle: (Boolean) -> Unit) {
     val shape = RoundedCornerShape(26.dp)
     val glow by animateFloatAsState(if (enabled) 1f else 0f, tween(700), label = "glow")
     val dot by animateColorAsState(if (enabled) Go else Color(0xFFEF4444), tween(400), label = "dot")
-    Row(
+    val fareA = rememberCountUp(today.fare); val ordA = rememberCountUp(today.orders.toFloat()); val kmA = rememberCountUp(today.km)
+    Column(
         Modifier.fillMaxWidth().enter(0)
             .clip(shape)
             .background(Brush.linearGradient(listOf(Charcoal, Ink)))
             .drawBehind {
-                val c = Offset(size.width * .10f, size.height * .5f)
+                val c = Offset(size.width * .10f, size.height * .30f)
                 drawCircle(
                     Brush.radialGradient(listOf(Go.copy(alpha = .38f * glow), Color.Transparent), center = c, radius = size.width * .55f),
                     radius = size.width * .55f, center = c
                 )
             }
-            .padding(horizontal = 18.dp, vertical = 20.dp),
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        StatusPulse(dot, enabled)
-        Spacer(Modifier.width(8.dp))
-        Column(Modifier.weight(1f)) {
-            AnimatedContent(
-                enabled,
-                transitionSpec = { (fadeIn(tween(250)) + slideInVertically { it / 3 }) togetherWith (fadeOut(tween(150)) + slideOutVertically { -it / 3 }) },
-                label = "st"
-            ) { on ->
-                Text(if (on) "Automatización activa" else "Automatización pausada", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
+        Row(Modifier.padding(start = 18.dp, end = 18.dp, top = 20.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            StatusPulse(dot, enabled)
+            Spacer(Modifier.width(8.dp))
+            Column(Modifier.weight(1f)) {
+                AnimatedContent(
+                    enabled,
+                    transitionSpec = { (fadeIn(tween(250)) + slideInVertically { it / 3 }) togetherWith (fadeOut(tween(150)) + slideOutVertically { -it / 3 }) },
+                    label = "st"
+                ) { on ->
+                    Column {
+                        Text(if (on) "Automatización activa" else "Automatización pausada", color = Color.White, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp)
+                        Text(
+                            if (on) "Acepta pedidos que cumplan tus filtros" else "Enciéndela para empezar a aceptar pedidos",
+                            fontSize = 12.sp, color = Color.White.copy(alpha = .62f), modifier = Modifier.padding(top = 2.dp)
+                        )
+                    }
+                }
             }
-            Text("Acepta pedidos que cumplan tus filtros", fontSize = 12.sp, color = Color.White.copy(alpha = .62f), modifier = Modifier.padding(top = 2.dp))
-        }
-        Switch(
-            checked = enabled, onCheckedChange = onToggle,
-            colors = SwitchDefaults.colors(
-                checkedTrackColor = Go, checkedThumbColor = Color.White,
-                uncheckedTrackColor = Color.White.copy(alpha = .15f), uncheckedThumbColor = Color.White.copy(alpha = .85f),
-                uncheckedBorderColor = Color.Transparent
+            Switch(
+                checked = enabled, onCheckedChange = onToggle,
+                colors = SwitchDefaults.colors(
+                    checkedTrackColor = Go, checkedThumbColor = Color.White,
+                    uncheckedTrackColor = Color.White.copy(alpha = .15f), uncheckedThumbColor = Color.White.copy(alpha = .85f),
+                    uncheckedBorderColor = Color.Transparent
+                )
             )
-        )
+        }
+        Box(Modifier.fillMaxWidth().padding(horizontal = 18.dp).height(1.dp).background(Color.White.copy(alpha = .10f)))
+        Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 16.dp)) {
+            MiniStat({ "S/ %.2f".format(fareA.value) }, "Hoy ganado", Modifier.weight(1.3f))
+            MiniStat({ ordA.value.toInt().toString() }, "Pedidos", Modifier.weight(1f))
+            MiniStat({ "%.1f km".format(kmA.value) }, "Recorridos", Modifier.weight(1f))
+        }
+    }
+}
+
+/** Una línea de la lista «Falta configurar»: el icono pasa de aviso a ✓ verde con rebote cuando se cumple. */
+@Composable
+private fun CheckRow(ok: Boolean, icon: ImageVector, title: String, hint: String) {
+    val c by animateColorAsState(if (ok) Go else Danger, tween(300), label = "ck")
+    Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(36.dp).background(c.copy(alpha = .12f), CircleShape), Alignment.Center) {
+            AnimatedContent(
+                ok,
+                transitionSpec = { (scaleIn(spring(Spring.DampingRatioMediumBouncy)) + fadeIn(tween(150))) togetherWith (scaleOut(tween(120)) + fadeOut(tween(120))) },
+                label = "cki"
+            ) { v -> Icon(if (v) Icons.Outlined.CheckCircle else icon, null, tint = c, modifier = Modifier.size(19.dp)) }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text(if (ok) "Listo" else hint, fontSize = 12.sp, color = if (ok) Go else Muted, lineHeight = 16.sp)
+        }
+    }
+}
+
+/**
+ * «Falta configurar»: solo aparece si falta un permiso o la app de pedidos. Se vuelve a comprobar al regresar de Ajustes
+ * y desaparece sola (con animación) cuando todo está listo.
+ */
+@Composable
+private fun SetupCard() {
+    val ctx = LocalContext.current
+    val cfg by DrixPrefs.cfg.collectAsStateWithLifecycle()
+    val active = LocalTabActive.current
+    var tick by remember { mutableIntStateOf(0) }
+    LifecycleResumeEffect(active) { tick++; onPauseOrDispose { } }
+    val overlay = remember(tick) { Settings.canDrawOverlays(ctx) }
+    val access = remember(tick) { ctx.accessibilityOn() }
+    val installed by produceState(true, cfg.targetPkg, tick) {
+        value = withContext(Dispatchers.IO) { ctx.packageManager.getLaunchIntentForPackage(cfg.targetPkg) != null }
+    }
+    val missing = listOf(overlay, access, installed).count { !it }
+    AnimatedVisibility(
+        missing > 0,
+        enter = fadeIn(tween(300)) + expandVertically(tween(300)),
+        exit = fadeOut(tween(200)) + shrinkVertically(tween(250))
+    ) {
+        DCard(Modifier.padding(top = 14.dp), index = 1) {
+            SectionTitle(Icons.Outlined.Settings, "Falta configurar", "Con esto Drix puede trabajar por ti")
+            CheckRow(overlay, Icons.Outlined.Layers, "Mostrar sobre otras apps", "Para ver el aviso de estado")
+            CheckRow(access, Icons.Outlined.Accessibility, "Accesibilidad · Drix Automático", "Para leer y aceptar pedidos")
+            CheckRow(installed, Icons.Outlined.Apps, "App de pedidos instalada", "Elige una más abajo")
+            if (!overlay || !access) {
+                Spacer(Modifier.height(10.dp))
+                PillButton("Configurar ahora", icon = Icons.Outlined.Settings) { ctx.ensurePermissions() }
+            }
+        }
     }
 }
 
@@ -308,17 +483,22 @@ fun HomeScreen(onGo: (Int) -> Unit) {
     val ctx = LocalContext.current
     val cfg by DrixPrefs.cfg.collectAsStateWithLifecycle()
     val zones by DrixPrefs.zones.collectAsStateWithLifecycle()
+    val days by DrixStats.days.collectAsStateWithLifecycle()
+    val today = days[DrixStats.dayKey()] ?: DayStats()
 
     Screen(hero = {
-        Brand(); Spacer(Modifier.height(20.dp))
+        HeroTop()
         HeroTitle("Drix trabaja bajo tus", "reglas")
     }) {
-        StatusCard(cfg.enabled) { on ->
-            if (on && !DrixPrefs.accessValid()) Toast.makeText(ctx, "Tu acceso no está vigente. Renueva tu cuenta por WhatsApp.", Toast.LENGTH_LONG).show()
-            else if (!on || ctx.ensurePermissions()) DrixPrefs.update { it.copy(enabled = on) }
+        Column {
+            StatusCard(cfg.enabled, today) { on ->
+                if (on && !DrixPrefs.accessValid()) Toast.makeText(ctx, "Tu acceso no está vigente. Renueva tu cuenta por WhatsApp.", Toast.LENGTH_LONG).show()
+                else if (!on || ctx.ensurePermissions()) DrixPrefs.update { it.copy(enabled = on) }
+            }
+            SetupCard()
         }
-        DCard(index = 1) {
-            SectionTitle(Icons.Outlined.Tune, "Tus parámetros actuales")
+        DCard(index = 2) {
+            SectionTitle(Icons.Outlined.Tune, "Tus filtros actuales", "Drix acepta solo lo que cumpla todo esto")
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Tile("Recogida máx.", "${num(cfg.maxPickupKm)} km", Modifier.weight(1f), Icons.Outlined.NearMe)
                 Tile("Destino máx.", "${num(cfg.maxTripKm)} km", Modifier.weight(1f), Icons.Outlined.Flag)
@@ -331,8 +511,8 @@ fun HomeScreen(onGo: (Int) -> Unit) {
             Spacer(Modifier.height(14.dp))
             PillButton("Editar parámetros", icon = Icons.Outlined.Tune) { onGo(1) }
         }
-        DCard(index = 2) {
-            SectionTitle(Icons.Outlined.Map, "Evita zonas que no te convienen")
+        DCard(index = 3) {
+            SectionTitle(Icons.Outlined.Map, "Zonas", "Evita o prefiere distritos en el mapa")
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 CountPill(Icons.Outlined.Block, zones.count { !it.accept }, "bloqueadas", Danger, Modifier.weight(1f))
                 CountPill(Icons.Outlined.CheckCircle, zones.count { it.accept }, "preferidas", Go, Modifier.weight(1f))
@@ -340,8 +520,7 @@ fun HomeScreen(onGo: (Int) -> Unit) {
             Spacer(Modifier.height(14.dp))
             PillButton("Abrir mapa de zonas", color = Charcoal, icon = Icons.Outlined.Map) { onGo(2) }
         }
-        RefreshCard(3)
-        TargetAppCard(4)
+        AppCard(4)
     }
 }
 
@@ -351,71 +530,108 @@ fun HomeScreen(onGo: (Int) -> Unit) {
 fun ParamsScreen() {
     val ctx = LocalContext.current
     val cfg by DrixPrefs.cfg.collectAsStateWithLifecycle()
-    var pk by remember(cfg) { mutableStateOf(num(cfg.maxPickupKm)) }
-    var tr by remember(cfg) { mutableStateOf(num(cfg.maxTripKm)) }
-    var km by remember(cfg) { mutableStateOf("%.2f".format(cfg.minPerKm)) }
-    var fr by remember(cfg) { mutableStateOf(num(cfg.minFare)) }
-    var h1 by remember(cfg) { mutableStateOf(cfg.startHour.toString()) }
-    var h2 by remember(cfg) { mutableStateOf(cfg.endHour.toString()) }
-    var d1 by remember(cfg) { mutableStateOf(cfg.minDelayMs.toString()) }
-    var d2 by remember(cfg) { mutableStateOf(cfg.maxDelayMs.toString()) }
+    // Cada campo se reinicia SOLO cuando cambia su propio valor guardado (antes, tocar un interruptor borraba lo que escribías).
+    var pk by remember(cfg.maxPickupKm) { mutableStateOf(num(cfg.maxPickupKm)) }
+    var tr by remember(cfg.maxTripKm) { mutableStateOf(num(cfg.maxTripKm)) }
+    var km by remember(cfg.minPerKm) { mutableStateOf("%.2f".format(cfg.minPerKm)) }
+    var fr by remember(cfg.minFare) { mutableStateOf(num(cfg.minFare)) }
+    var h1 by remember(cfg.startHour) { mutableStateOf(cfg.startHour.toString()) }
+    var h2 by remember(cfg.endHour) { mutableStateOf(cfg.endHour.toString()) }
+    var d1 by remember(cfg.minDelayMs) { mutableStateOf(cfg.minDelayMs.toString()) }
+    var d2 by remember(cfg.maxDelayMs) { mutableStateOf(cfg.maxDelayMs.toString()) }
     var saved by remember { mutableStateOf(false) }
     LaunchedEffect(saved) { if (saved) { delay(1600); saved = false } }
 
-    Screen(hero = {
-        Brand(); Spacer(Modifier.height(20.dp))
-        HeroTitle("Tus parámetros actuales", sub = "Configuración basada en tus preferencias guardadas.")
-    }) {
-        DCard(index = 0) {
-            SectionTitle(Icons.Outlined.DirectionsCar, "Reglas de rentabilidad", "Drix acepta solo si cumple todas")
-            LabeledField("Distancia máxima de recogida (km)", pk) { pk = it }
-            Spacer(Modifier.height(16.dp))
-            LabeledField("Distancia máxima de destino (km)", tr) { tr = it }
-            Spacer(Modifier.height(16.dp))
-            LabeledField("Precio por kilómetro (S/)", km) { km = it }
-            Spacer(Modifier.height(16.dp))
-            LabeledField("Precio mínimo (S/)", fr) { fr = it }
-        }
-        DCard(index = 1) {
-            SectionTitle(Icons.Outlined.Schedule, "Horario y ritmo")
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                LabeledField("Desde (h)", h1, Modifier.weight(1f), decimal = false) { h1 = it }
-                LabeledField("Hasta (h)", h2, Modifier.weight(1f), decimal = false) { h2 = it }
-            }
-            Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                LabeledField("Retraso mín (ms)", d1, Modifier.weight(1f), decimal = false) { d1 = it }
-                LabeledField("Retraso máx (ms)", d2, Modifier.weight(1f), decimal = false) { d2 = it }
-            }
-            Text("Tiempo al azar entre ambos antes de pulsar Aceptar. Los pedidos caducan en segundos: no lo subas demasiado.",
-                fontSize = 11.sp, color = Muted, lineHeight = 15.sp, modifier = Modifier.padding(top = 8.dp))
-            Row(Modifier.fillMaxWidth().padding(top = 14.dp).background(Fog, RoundedCornerShape(16.dp)).padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Aceptar si no se identifica el distrito", Modifier.weight(1f), fontSize = 14.sp)
-                Switch(cfg.unknownOk, { v -> DrixPrefs.update { it.copy(unknownOk = v) } },
-                    colors = SwitchDefaults.colors(checkedTrackColor = Go, checkedThumbColor = Color.White))
-            }
-        }
-        GenderCard(2)
-        ReadDelayCard(3)
-        BlockedWordsCard(4)
-        Box(Modifier.enter(5)) {
-            PillButton(if (saved) "¡Guardado!" else "Guardar cambios", color = if (saved) Go else Yellow, icon = Icons.Outlined.CheckCircle) {
-                val lo = (d1.toIntOrNull() ?: cfg.minDelayMs).coerceIn(0, 5000)
-                val hi = (d2.toIntOrNull() ?: cfg.maxDelayMs).coerceIn(lo, 5000)
-                DrixPrefs.update {
-                    it.copy(
-                        maxPickupKm = pk.asFloat() ?: it.maxPickupKm, maxTripKm = tr.asFloat() ?: it.maxTripKm,
-                        minPerKm = km.asFloat() ?: it.minPerKm, minFare = fr.asFloat() ?: it.minFare,
-                        startHour = h1.toIntOrNull()?.coerceIn(0, 23) ?: it.startHour,
-                        endHour = h2.toIntOrNull()?.coerceIn(0, 24) ?: it.endHour,
-                        minDelayMs = lo, maxDelayMs = hi
+    // Valores ya validados (los mismos que se guardarán) → sirven para el resumen en vivo y para saber si hay cambios.
+    val nPk = pk.asFloat() ?: cfg.maxPickupKm
+    val nTr = tr.asFloat() ?: cfg.maxTripKm
+    val nKm = km.asFloat() ?: cfg.minPerKm
+    val nFr = fr.asFloat() ?: cfg.minFare
+    val nH1 = h1.toIntOrNull()?.coerceIn(0, 23) ?: cfg.startHour
+    val nH2 = h2.toIntOrNull()?.coerceIn(0, 24) ?: cfg.endHour
+    val nD1 = (d1.toIntOrNull() ?: cfg.minDelayMs).coerceIn(0, 5000)
+    val nD2 = (d2.toIntOrNull() ?: cfg.maxDelayMs).coerceIn(nD1, 5000)
+    val dirty = nPk != cfg.maxPickupKm || nTr != cfg.maxTripKm || nKm != cfg.minPerKm || nFr != cfg.minFare ||
+        nH1 != cfg.startHour || nH2 != cfg.endHour || nD1 != cfg.minDelayMs || nD2 != cfg.maxDelayMs
+    val showBar = dirty || saved
+    val bottomPad by animateDpAsState(if (showBar) 88.dp else 8.dp, tween(250), label = "bp")
+
+    Box(Modifier.fillMaxSize()) {
+        Screen(hero = {
+            HeroTop()
+            HeroTitle("Ajusta tus filtros", sub = "Drix acepta un pedido solo si cumple todo lo de abajo.")
+        }) {
+            DCard(index = 0) {
+                SectionTitle(Icons.Outlined.DirectionsCar, "Reglas de rentabilidad", "Recogida = distancia hasta el cliente · Destino = largo del viaje")
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LabeledField("Recogida máx.", pk, Modifier.weight(1f), suffix = "km") { pk = it }
+                    LabeledField("Destino máx.", tr, Modifier.weight(1f), suffix = "km") { tr = it }
+                }
+                Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LabeledField("Precio por km", km, Modifier.weight(1f), suffix = "S/") { km = it }
+                    LabeledField("Precio mínimo", fr, Modifier.weight(1f), suffix = "S/") { fr = it }
+                }
+                Spacer(Modifier.height(14.dp))
+                // Resumen en vivo: se actualiza mientras escribes, para entender qué hará Drix con estos números.
+                Row(Modifier.fillMaxWidth().background(Tint, RoundedCornerShape(16.dp)).padding(12.dp), verticalAlignment = Alignment.Top) {
+                    Icon(Icons.Outlined.AutoAwesome, null, tint = Amber, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        androidx.compose.ui.text.buildAnnotatedString {
+                            fun b(t: String) = withStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.ExtraBold)) { append(t) }
+                            append("Aceptará pedidos con recogida hasta "); b("${num(nPk)} km")
+                            append(" y viaje hasta "); b("${num(nTr)} km")
+                            append(", que paguen al menos "); b("S/ %.2f por km".format(nKm))
+                            append(" y "); b("S/ ${num(nFr)}"); append(" en total, de "); b("$nH1:00 a $nH2:00"); append(".")
+                        },
+                        fontSize = 13.sp, lineHeight = 18.sp, color = Ink
                     )
                 }
-                saved = true
-                Toast.makeText(ctx, "Parámetros guardados", Toast.LENGTH_SHORT).show()
+            }
+            DCard(index = 1) {
+                SectionTitle(Icons.Outlined.Schedule, "Horario y ritmo", "Cuándo trabaja Drix y cuánto espera antes de aceptar")
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LabeledField("Desde", h1, Modifier.weight(1f), decimal = false, suffix = "h") { h1 = it }
+                    LabeledField("Hasta", h2, Modifier.weight(1f), decimal = false, suffix = "h") { h2 = it }
+                }
+                Spacer(Modifier.height(14.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    LabeledField("Retraso mín.", d1, Modifier.weight(1f), decimal = false, suffix = "ms") { d1 = it }
+                    LabeledField("Retraso máx.", d2, Modifier.weight(1f), decimal = false, suffix = "ms") { d2 = it }
+                }
+                Text("Drix espera un tiempo al azar entre ambos antes de pulsar Aceptar. Los pedidos caducan en segundos: no lo subas demasiado.",
+                    fontSize = 12.sp, color = Muted, lineHeight = 16.sp, modifier = Modifier.padding(top = 8.dp, bottom = 14.dp))
+                SwitchRow("Aceptar si no se identifica el distrito", cfg.unknownOk) { v -> DrixPrefs.update { it.copy(unknownOk = v) } }
+            }
+            GenderCard(2)
+            ReadDelayCard(3)
+            BlockedWordsCard(4)
+            Spacer(Modifier.height(bottomPad))
+        }
+        // Barra de guardado flotante: solo aparece cuando hay cambios sin guardar.
+        AnimatedVisibility(
+            showBar, Modifier.align(Alignment.BottomCenter),
+            enter = slideInVertically(spring(Spring.DampingRatioLowBouncy, Spring.StiffnessMediumLow)) { it } + fadeIn(tween(200)),
+            exit = slideOutVertically(tween(220)) { it } + fadeOut(tween(160))
+        ) {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+                PillButton(
+                    if (saved) "¡Guardado!" else "Guardar cambios",
+                    Modifier.fillMaxWidth().shadow(12.dp, RoundedCornerShape(16.dp)),
+                    color = if (saved) Go else Yellow, icon = Icons.Outlined.CheckCircle
+                ) {
+                    DrixPrefs.update {
+                        it.copy(
+                            maxPickupKm = nPk, maxTripKm = nTr, minPerKm = nKm, minFare = nFr,
+                            startHour = nH1, endHour = nH2, minDelayMs = nD1, maxDelayMs = nD2
+                        )
+                    }
+                    saved = true
+                    Toast.makeText(ctx, "Parámetros guardados", Toast.LENGTH_SHORT).show()
+                }
             }
         }
-        Spacer(Modifier.height(8.dp))
     }
 }
 
@@ -496,7 +712,7 @@ private fun BlockedWordsCard(index: Int) {
                 }
             }
         }
-        Text("No distingue mayúsculas ni tildes. Toca una palabra para quitarla.", fontSize = 11.sp, color = Muted, lineHeight = 15.sp, modifier = Modifier.padding(top = 14.dp))
+        Text("No distingue mayúsculas ni tildes. Toca una palabra para quitarla.", fontSize = 12.sp, color = Muted, lineHeight = 15.sp, modifier = Modifier.padding(top = 14.dp))
     }
 }
 
@@ -767,9 +983,15 @@ fun ProfileScreen(profile: Profile, onAdmin: () -> Unit = {}) {
     val initials = name.split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.first().uppercase() }
         .ifEmpty { email.take(1).uppercase() }
     fun whatsapp(text: String) = ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/51900385006?text=" + Uri.encode(text))))
+    val badge: Pair<String, Color>? = when {
+        profile.isAdmin -> "Administrador" to Ink
+        profile.isTrial -> "Prueba gratis" to Amber
+        profile.until != null -> "Cuenta activa" to Go
+        else -> null
+    }
 
     Screen(hero = {
-        Brand(); Spacer(Modifier.height(20.dp))
+        HeroTop()
         HeroTitle("Tu cuenta", "Drix")
     }) {
         DCard(index = 0) {
@@ -780,51 +1002,52 @@ fun ProfileScreen(profile: Profile, onAdmin: () -> Unit = {}) {
                     Alignment.Center
                 ) { Text(initials, color = Ink, fontWeight = FontWeight.ExtraBold, fontSize = 21.sp) }
                 Spacer(Modifier.width(14.dp))
-                Column {
-                    Text(name.ifBlank { "Conductor Drix" }, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp)
-                    Text(email, fontSize = 12.sp, color = Muted)
+                Column(Modifier.weight(1f)) {
+                    Text(name.ifBlank { "Conductor Drix" }, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(email, fontSize = 12.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    badge?.let { (t, c) ->
+                        Text(
+                            t, Modifier.padding(top = 6.dp).background(c.copy(alpha = .12f), RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 3.dp),
+                            color = c, fontSize = 11.sp, fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
         profile.until?.let { SubscriptionCard(it, profile.isTrial) { whatsapp("Hola Drix, quiero renovar mi acceso.\nCorreo: $email") } }
         DCard(index = 2) {
             SectionTitle(Icons.Outlined.Lock, "Datos de la cuenta", "Los registraste una sola vez y no se pueden editar desde la app.")
-            Tile("Nombres", profile.firstName.orEmpty(), Modifier.fillMaxWidth(), Icons.Outlined.Person)
+            InfoRow(Icons.Outlined.Person, "Nombres", profile.firstName.orEmpty().ifBlank { "—" })
+            InfoRow(Icons.Outlined.Person, "Apellidos", profile.lastName.orEmpty().ifBlank { "—" })
+            InfoRow(Icons.Outlined.Phone, "Teléfono", prettyPhone(profile.phone.orEmpty()))
+            InfoRow(Icons.Outlined.Email, "Correo", email.ifBlank { "—" }, divider = false)
+            Spacer(Modifier.height(14.dp))
+            PillButton("Ayuda por WhatsApp", color = Go, icon = Icons.Outlined.SupportAgent) { whatsapp("Hola Drix") }
             Spacer(Modifier.height(10.dp))
-            Tile("Apellidos", profile.lastName.orEmpty(), Modifier.fillMaxWidth(), Icons.Outlined.Person)
-            Spacer(Modifier.height(10.dp))
-            Tile("Teléfono", prettyPhone(profile.phone.orEmpty()), Modifier.fillMaxWidth(), Icons.Outlined.Phone)
-            Spacer(Modifier.height(10.dp))
-            Tile("Correo", email.ifBlank { "—" }, Modifier.fillMaxWidth(), Icons.Outlined.Email)
-            Spacer(Modifier.height(16.dp))
-            PillButton("Solicitar cambio de datos", color = Go, icon = Icons.Outlined.Edit) {
+            GhostButton("Solicitar cambio de datos", icon = Icons.Outlined.Edit) {
                 whatsapp("Hola Drix, quiero cambiar mis datos.\nCorreo: $email\nNombre actual: $name\nTeléfono actual: ${profile.phone.orEmpty()}\nCambio que necesito: ")
             }
-            Spacer(Modifier.height(10.dp))
-            PillButton("Ayuda por WhatsApp", color = Go, icon = Icons.Outlined.SupportAgent) { whatsapp("Hola Drix") }
         }
         DCard(index = 3) {
-            SectionTitle(Icons.Outlined.Shield, "Seguridad", "Te enviamos un enlace a tu correo para cambiar la contraseña.")
-            PillButton("Cambiar contraseña", color = Charcoal, icon = Icons.Outlined.Key) {
+            SectionTitle(Icons.Outlined.Shield, "Seguridad y versión", "Cambia tu contraseña por correo. Drix se actualiza solo desde internet.")
+            InfoRow(Icons.Outlined.Info, "Versión instalada", Updater.installedName(ctx).ifBlank { "—" }, divider = false)
+            Spacer(Modifier.height(12.dp))
+            GhostButton("Cambiar contraseña", icon = Icons.Outlined.Key) {
                 scope.launch {
                     AuthRepo.resetForCurrentUser()
                         .onSuccess { Toast.makeText(ctx, "Enlace enviado a $email", Toast.LENGTH_LONG).show() }
                         .onFailure { Toast.makeText(ctx, AuthRepo.message(it) ?: "No se pudo enviar", Toast.LENGTH_LONG).show() }
                 }
             }
-        }
-        DCard(index = 4) {
-            SectionTitle(Icons.Outlined.CloudDownload, "Actualizaciones", "Drix se actualiza solo desde internet: no necesitas descargar el APK otra vez.")
-            Tile("Versión instalada", Updater.installedName(ctx).ifBlank { "—" }, Modifier.fillMaxWidth(), Icons.Outlined.Info)
-            Spacer(Modifier.height(12.dp))
-            PillButton("Buscar actualizaciones", color = Charcoal, icon = Icons.Outlined.Sync) {
+            Spacer(Modifier.height(10.dp))
+            GhostButton("Buscar actualizaciones", icon = Icons.Outlined.Sync) {
                 scope.launch { Updater.check(ctx, manual = true) }
             }
         }
-        if (profile.isAdmin) PillButton("Panel de administrador", icon = Icons.Outlined.AdminPanelSettings, onClick = onAdmin)
-        DebugCard(5)
-        PillButton("Cerrar sesión", color = Charcoal, icon = Icons.Outlined.PowerSettingsNew) { AuthRepo.signOut() }
-        Text("Drix v${Updater.installedName(ctx)}", fontSize = 12.sp, color = Muted, modifier = Modifier.align(Alignment.CenterHorizontally))
+        if (profile.isAdmin) PillButton("Panel de administrador", color = Charcoal, icon = Icons.Outlined.AdminPanelSettings, onClick = onAdmin)
+        DebugCard(4)
+        GhostButton("Cerrar sesión", tone = Danger, icon = Icons.Outlined.PowerSettingsNew) { AuthRepo.signOut() }
+        Spacer(Modifier.height(4.dp))
     }
 }
 
@@ -846,12 +1069,13 @@ fun ExtrasScreen() {
     val avgA = rememberCountUp(avg); val perKmA = rememberCountUp(perKm)
 
     Screen(hero = {
-        Brand(); Spacer(Modifier.height(20.dp))
-        HeroTitle("Tus extras", "Hoy", "Lo que Drix te ha aceptado desde las 00:00.")
+        HeroTop()
+        HeroTitle("Tu resumen de", "hoy", "Lo que Drix te ha aceptado desde las 00:00.")
     }) {
         Column(
             Modifier.fillMaxWidth().enter(0)
-                .clip(shape).background(Brush.linearGradient(listOf(Charcoal, Ink))).padding(22.dp)
+                .clip(shape).background(Brush.linearGradient(listOf(Charcoal, Ink)))
+                .sweepOnce(LocalTabActive.current to t.orders, Yellow.copy(alpha = .22f)).padding(22.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Outlined.Payments, null, tint = Yellow, modifier = Modifier.size(18.dp))
@@ -859,7 +1083,8 @@ fun ExtrasScreen() {
                 Text("Dinero de hoy", fontSize = 13.sp, color = Color.White.copy(alpha = .7f))
             }
             CountText({ "S/ %.2f".format(fareA.value) }, fontSize = 44.sp, fontWeight = FontWeight.ExtraBold, color = Yellow, letterSpacing = (-1).sp, modifier = Modifier.padding(top = 6.dp))
-            CountText({ "${ordersA.value.toInt()} pedidos aceptados" }, fontSize = 12.sp, color = Color.White.copy(alpha = .6f))
+            if (t.orders > 0) CountText({ "${ordersA.value.toInt()} pedidos aceptados" }, fontSize = 12.sp, color = Color.White.copy(alpha = .6f))
+            else Text("Aún no hay pedidos hoy. Enciende Drix en Inicio.", fontSize = 12.sp, color = Color.White.copy(alpha = .6f))
         }
         DCard(index = 1) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -944,7 +1169,7 @@ private fun CountTile(value: Long, label: String, color: Color, mod: Modifier) {
             transitionSpec = { (slideInVertically { -it } + fadeIn(tween(200))) togetherWith (slideOutVertically { it } + fadeOut(tween(150))) },
             label = "count"
         ) { v -> Text(v.toString().padStart(2, '0'), fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = color) }
-        Text(label, fontSize = 11.sp, color = Muted)
+        Text(label, fontSize = 12.sp, color = Muted)
     }
 }
 
@@ -967,29 +1192,44 @@ object AppInfoCache {
 
 data class AppItem(val label: String, val pkg: String)
 
+/** App de pedidos: cuál es, para cambiarla, y el botón de refrescar la lista (antes eran dos tarjetas separadas). */
 @Composable
-fun TargetAppCard(index: Int = 0) {
+fun AppCard(index: Int = 0) {
     val ctx = LocalContext.current
     val cfg by DrixPrefs.cfg.collectAsStateWithLifecycle()
     var open by remember { mutableStateOf(false) }
-    // Antes: loadLabel + getApplicationIcon + toBitmap se ejecutaban EN EL HILO PRINCIPAL al entrar en Inicio (IPC al PackageManager).
+    var spins by remember { mutableIntStateOf(0) }
+    val rot by animateFloatAsState(spins * 360f, tween(800, easing = FastOutSlowInEasing), label = "spin")
+    // Etiqueta + icono se cargan fuera del hilo principal (IPC al PackageManager).
     val info by produceState(AppInfoCache.peek(cfg.targetPkg), cfg.targetPkg) {
         value = AppInfoCache.peek(cfg.targetPkg) ?: withContext(Dispatchers.IO) { AppInfoCache.load(ctx, cfg.targetPkg) }
     }
     val label = info?.label
     val icon = info?.icon
     DCard(index = index) {
-        SectionTitle(Icons.Outlined.Apps, "App objetivo")
+        SectionTitle(Icons.Outlined.Apps, "App de pedidos", "Drix lee y acepta los pedidos en esta app")
         Row(Modifier.fillMaxWidth().background(Fog, RoundedCornerShape(18.dp)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
             if (icon != null) Image(icon, null, Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)))
             else Box(Modifier.size(44.dp).background(Tint, RoundedCornerShape(12.dp)), Alignment.Center) { Icon(Icons.Outlined.ErrorOutline, null, tint = Amber) }
             Spacer(Modifier.width(12.dp))
-            Column {
-                Text(label ?: "No instalada", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                Text(cfg.targetPkg, fontSize = 11.sp, color = Muted)
+            Column(Modifier.weight(1f)) {
+                Text(label ?: "No instalada", fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(cfg.targetPkg, fontSize = 12.sp, color = Muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        PillButton("Elegir app instalada", Modifier.fillMaxWidth().padding(top = 12.dp), Charcoal, Icons.Outlined.Apps) { open = true }
+        Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            GhostButton("Cambiar app", Modifier.weight(1f), icon = Icons.Outlined.Apps) { open = true }
+            PillButton("Refrescar", Modifier.weight(1f), Charcoal, Icons.Outlined.Refresh, iconRotation = rot) {
+                spins++
+                val svc = DrixAccessibilityService.instance
+                if (svc == null) Toast.makeText(ctx, "Activa Drix Automático en Accesibilidad", Toast.LENGTH_LONG).show()
+                else {
+                    ctx.packageManager.getLaunchIntentForPackage(cfg.targetPkg)?.let { ctx.startActivity(it) }
+                    svc.refresh(1500)
+                }
+            }
+        }
+        Text("Refrescar abre la app, cierra el detalle y recarga la lista de pedidos.", fontSize = 12.sp, color = Muted, lineHeight = 16.sp, modifier = Modifier.padding(top = 10.dp))
     }
     if (open) AppPickerDialog({ open = false }) { pkg -> DrixPrefs.update { it.copy(targetPkg = pkg) }; open = false }
 }
@@ -1024,7 +1264,7 @@ fun AppPickerDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
                         Row(Modifier.fillMaxWidth().clickable { onPick(a.pkg) }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                             icon?.let { Image(it, null, Modifier.size(40.dp)) }
                             Spacer(Modifier.width(12.dp))
-                            Column { Text(a.label, fontWeight = FontWeight.SemiBold); Text(a.pkg, fontSize = 11.sp, color = Muted) }
+                            Column { Text(a.label, fontWeight = FontWeight.SemiBold); Text(a.pkg, fontSize = 12.sp, color = Muted) }
                         }
                     }
                 }
@@ -1036,40 +1276,28 @@ fun AppPickerDialog(onDismiss: () -> Unit, onPick: (String) -> Unit) {
 
 /* ═════════════ REFRESCAR + DIAGNÓSTICO ═════════════ */
 
-@Composable
-fun RefreshCard(index: Int = 0) {
-    val ctx = LocalContext.current
-    val cfg by DrixPrefs.cfg.collectAsStateWithLifecycle()
-    var spins by remember { mutableIntStateOf(0) }
-    val rot by animateFloatAsState(spins * 360f, tween(800, easing = FastOutSlowInEasing), label = "spin")
-    DCard(index = index) {
-        SectionTitle(Icons.Outlined.Sync, "Refrescar lista", "Abre la app objetivo, cierra el detalle y recarga los pedidos")
-        PillButton("Refrescar", icon = Icons.Outlined.Refresh, iconRotation = rot) {
-            spins++
-            val svc = DrixAccessibilityService.instance
-            if (svc == null) Toast.makeText(ctx, "Activa Drix Automático en Accesibilidad", Toast.LENGTH_LONG).show()
-            else {
-                ctx.packageManager.getLaunchIntentForPackage(cfg.targetPkg)?.let { ctx.startActivity(it) }
-                svc.refresh(1500)
-            }
-        }
-    }
-}
-
+/** Diagnóstico: plegado por defecto (es para soporte, no para el uso diario). Se despliega con animación. */
 @Composable
 fun DebugCard(index: Int = 0) {
     val ctx = LocalContext.current
     val dbg by DrixPrefs.debug.collectAsStateWithLifecycle()
-    DCard(index = index) {
-        SectionTitle(Icons.Outlined.BugReport, "Diagnóstico", "Última lectura de la app objetivo")
-        Text(
-            dbg.ifBlank { "— aún no hay lecturas —" }, fontSize = 11.sp, fontFamily = FontFamily.Monospace, lineHeight = 15.sp,
-            modifier = Modifier.fillMaxWidth().background(Fog, RoundedCornerShape(14.dp)).padding(12.dp)
-        )
-        PillButton("Copiar texto", Modifier.fillMaxWidth().padding(top = 12.dp), Charcoal, Icons.Outlined.ContentCopy) {
-            (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
-                .setPrimaryClip(android.content.ClipData.newPlainText("drix", dbg))
-            Toast.makeText(ctx, "Copiado", Toast.LENGTH_SHORT).show()
+    var open by remember { mutableStateOf(false) }
+    val rot by animateFloatAsState(if (open) 180f else 0f, tween(250, easing = FastOutSlowInEasing), label = "dbgrot")
+    DCard(Modifier.animateContentSize(tween(250, easing = FastOutSlowInEasing)), index = index) {
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).clickable { open = !open }, verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) { SectionTitle(Icons.Outlined.BugReport, "Diagnóstico", "Avanzado · para soporte") }
+            Icon(Icons.Outlined.ExpandMore, if (open) "Ocultar" else "Mostrar", tint = Muted, modifier = Modifier.padding(bottom = 14.dp).graphicsLayer { rotationZ = rot })
+        }
+        if (open) {
+            Text(
+                dbg.ifBlank { "— aún no hay lecturas —" }, fontSize = 11.sp, fontFamily = FontFamily.Monospace, lineHeight = 15.sp,
+                modifier = Modifier.fillMaxWidth().background(Fog, RoundedCornerShape(14.dp)).padding(12.dp)
+            )
+            GhostButton("Copiar texto", Modifier.fillMaxWidth().padding(top = 12.dp), icon = Icons.Outlined.ContentCopy) {
+                (ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("drix", dbg))
+                Toast.makeText(ctx, "Copiado", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 }
@@ -1082,19 +1310,10 @@ private fun GenderCard(index: Int) {
     val cfg by DrixPrefs.cfg.collectAsStateWithLifecycle()
     DCard(index = index) {
         SectionTitle(Icons.Outlined.Wc, "Género del pasajero", "Bloquea los pedidos de hombres o de mujeres. Drix lo deduce por el nombre del pasajero.")
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(0 to "Todos", 1 to "Sin hombres", 2 to "Sin mujeres").forEach { (mode, label) ->
-                val on = cfg.genderBlock == mode
-                Box(
-                    Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(if (on) Yellow else Fog)
-                        .clickable { DrixPrefs.update { it.copy(genderBlock = mode) } }.padding(vertical = 14.dp),
-                    Alignment.Center
-                ) { Text(label, fontWeight = if (on) FontWeight.ExtraBold else FontWeight.SemiBold, fontSize = 13.sp, color = Ink) }
-            }
-        }
+        SegmentedChoice(listOf("Todos", "Sin hombres", "Sin mujeres"), cfg.genderBlock) { m -> DrixPrefs.update { it.copy(genderBlock = m) } }
         Text(
             "Si el nombre no permite saberlo con seguridad, el pedido NO se bloquea. Se aplica al instante.",
-            fontSize = 11.sp, color = Muted, lineHeight = 15.sp, modifier = Modifier.padding(top = 8.dp)
+            fontSize = 12.sp, color = Muted, lineHeight = 16.sp, modifier = Modifier.padding(top = 10.dp)
         )
     }
 }
@@ -1108,17 +1327,7 @@ private fun ReadDelayCard(index: Int) {
     var confirm by remember { mutableStateOf(false) }
     DCard(index = index) {
         SectionTitle(Icons.Outlined.Timer, "Pausa para leer", "Cuenta regresiva de 3 segundos antes de aceptar.")
-        Row(
-            Modifier.fillMaxWidth().background(Fog, RoundedCornerShape(16.dp)).padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Esperar 3 segundos antes de aceptar", Modifier.weight(1f), fontSize = 14.sp)
-            Switch(
-                cfg.readDelay,
-                { v -> if (v) confirm = true else DrixPrefs.update { it.copy(readDelay = false) } },
-                colors = SwitchDefaults.colors(checkedTrackColor = Go, checkedThumbColor = Color.White)
-            )
-        }
+        SwitchRow("Esperar 3 segundos antes de aceptar", cfg.readDelay) { v -> if (v) confirm = true else DrixPrefs.update { it.copy(readDelay = false) } }
         Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.Top) {
             Icon(Icons.Outlined.Info, null, tint = Muted, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))

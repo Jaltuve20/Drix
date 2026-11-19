@@ -42,6 +42,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.DirectionsCar
+import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -86,11 +91,14 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class Tab(val label: String, val icon: ImageVector)
+private data class Tab(val label: String, val icon: ImageVector, val iconOff: ImageVector)
 
 private val tabs = listOf(
-    Tab("Inicio", Icons.Filled.Home), Tab("Parámetros", Icons.Filled.DirectionsCar),
-    Tab("Zonas", Icons.Filled.Map), Tab("Extras", Icons.Filled.BarChart), Tab("Perfil", Icons.Filled.Person)
+    Tab("Inicio", Icons.Filled.Home, Icons.Outlined.Home),
+    Tab("Parámetros", Icons.Filled.DirectionsCar, Icons.Outlined.DirectionsCar),
+    Tab("Zonas", Icons.Filled.Map, Icons.Outlined.Map),
+    Tab("Hoy", Icons.Filled.BarChart, Icons.Outlined.BarChart),
+    Tab("Perfil", Icons.Filled.Person, Icons.Outlined.Person)
 )
 
 private sealed interface PState {
@@ -238,18 +246,18 @@ private fun KeepAlive(active: Boolean, content: @Composable () -> Unit) {
     Box(Modifier.layout { measurable, constraints ->
         val p = measurable.measure(constraints)
         layout(p.width, p.height) { if (active) p.place(0, 0) }
-    }) { content() }
+    }) { CompositionLocalProvider(LocalTabActive provides active) { content() } }
 }
 
 /** Barra inferior flotante: la pestaña activa se expande en una píldora amarilla con su nombre. */
 @Composable
 private fun DrixNavBar(selected: Int, onSelect: (Int) -> Unit) {
     Surface(
-        color = Color.White, shadowElevation = 18.dp,
+        color = Color.White, shadowElevation = 14.dp,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {
         Row(
-            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 10.dp),
+            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 10.dp, vertical = 10.dp),
             horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically
         ) {
             tabs.forEachIndexed { i, t -> NavItem(t, i == selected) { onSelect(i) } }
@@ -263,13 +271,17 @@ private fun NavItem(t: Tab, sel: Boolean, onClick: () -> Unit) {
     val bg by animateColorAsState(if (sel) Yellow else Color.Transparent, tween(260), label = "nbg")
     val tint by animateColorAsState(if (sel) Ink else Color(0xFF8B929B), tween(260), label = "ntint")
     val iconScale by animateFloatAsState(if (sel) 1.12f else 1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessLow), label = "nis")
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     Row(
         Modifier.pressScale(src, .92f).clip(RoundedCornerShape(18.dp)).background(bg)
-            .clickable(interactionSource = src, indication = LocalIndication.current, onClick = onClick)
+            .clickable(interactionSource = src, indication = LocalIndication.current) {
+                if (!sel) haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                onClick()
+            }
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(t.icon, t.label, tint = tint, modifier = Modifier.size(24.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale })
+        Icon(if (sel) t.icon else t.iconOff, t.label, tint = tint, modifier = Modifier.size(24.dp).graphicsLayer { scaleX = iconScale; scaleY = iconScale })
         AnimatedVisibility(sel, enter = expandHorizontally(tween(220)) + fadeIn(tween(220)), exit = shrinkHorizontally(tween(180)) + fadeOut(tween(120))) {
             Text(t.label, Modifier.padding(start = 6.dp), color = tint, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
         }

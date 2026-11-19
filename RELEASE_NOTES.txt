@@ -1,1 +1,7 @@
 Nuevo: botón flotante con el logo para activar o pausar Drix sin abrir la app, pausa de 3 segundos para leer antes de aceptar, filtro por género y avisos del administrador.
+
+Mejora visual (UI):
+- Animaciones de entrada escalonadas que se repiten al cambiar de pestaña.
+- Inicio: resumen de hoy dentro de la tarjeta de estado y lista "Falta configurar" con permisos.
+- Parámetros: campos con unidad, resumen en vivo, barra flotante "Guardar cambios" y selector deslizante.
+- Perfil: datos en lista, botones por jerarquía, Diagnóstico plegable.
