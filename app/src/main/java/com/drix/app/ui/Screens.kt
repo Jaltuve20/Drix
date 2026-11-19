@@ -395,8 +395,9 @@ fun ParamsScreen() {
                     colors = SwitchDefaults.colors(checkedTrackColor = Go, checkedThumbColor = Color.White))
             }
         }
-        BlockedWordsCard(2)
-        Box(Modifier.enter(3)) {
+        GenderCard(2)
+        BlockedWordsCard(3)
+        Box(Modifier.enter(4)) {
             PillButton(if (saved) "¡Guardado!" else "Guardar cambios", color = if (saved) Go else Yellow, icon = Icons.Outlined.CheckCircle) {
                 val lo = (d1.toIntOrNull() ?: cfg.minDelayMs).coerceIn(0, 5000)
                 val hi = (d2.toIntOrNull() ?: cfg.maxDelayMs).coerceIn(lo, 5000)
@@ -1069,5 +1070,30 @@ fun DebugCard(index: Int = 0) {
                 .setPrimaryClip(android.content.ClipData.newPlainText("drix", dbg))
             Toast.makeText(ctx, "Copiado", Toast.LENGTH_SHORT).show()
         }
+    }
+}
+
+/* ═════════════ FILTRO POR GÉNERO ═════════════ */
+
+/** Elige si Drix debe rechazar pedidos de hombres o de mujeres. Se guarda al tocar. */
+@Composable
+private fun GenderCard(index: Int) {
+    val cfg by DrixPrefs.cfg.collectAsStateWithLifecycle()
+    DCard(index = index) {
+        SectionTitle(Icons.Outlined.Wc, "Género del pasajero", "Bloquea los pedidos de hombres o de mujeres. Drix lo deduce por el nombre del pasajero.")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(0 to "Todos", 1 to "Sin hombres", 2 to "Sin mujeres").forEach { (mode, label) ->
+                val on = cfg.genderBlock == mode
+                Box(
+                    Modifier.weight(1f).clip(RoundedCornerShape(14.dp)).background(if (on) Yellow else Fog)
+                        .clickable { DrixPrefs.update { it.copy(genderBlock = mode) } }.padding(vertical = 14.dp),
+                    Alignment.Center
+                ) { Text(label, fontWeight = if (on) FontWeight.ExtraBold else FontWeight.SemiBold, fontSize = 13.sp, color = Ink) }
+            }
+        }
+        Text(
+            "Si el nombre no permite saberlo con seguridad, el pedido NO se bloquea. Se aplica al instante.",
+            fontSize = 11.sp, color = Muted, lineHeight = 15.sp, modifier = Modifier.padding(top = 8.dp)
+        )
     }
 }

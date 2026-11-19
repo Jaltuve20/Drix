@@ -1,0 +1,1 @@
+Nuevo: filtro por género (bloquear pedidos de hombres o de mujeres) y avisos del administrador a todos los usuarios.

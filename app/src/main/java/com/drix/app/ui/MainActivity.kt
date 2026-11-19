@@ -6,7 +6,11 @@ import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import com.drix.app.notify.Announcements
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -188,6 +192,15 @@ fun DrixApp(profile: Profile) {
         delay(900)
         for (t in intArrayOf(1, 3, 4)) { if (t !in loaded) loaded = loaded + t; delay(450) }
     }
+    // Avisos del administrador: permiso de notificaciones (Android 13+) y escucha mientras la app está abierta
+    val appCtx = LocalContext.current
+    val notifPerm = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    LaunchedEffect(Unit) {
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(appCtx, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) notifPerm.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+    }
+    DisposableEffect(Unit) { val off = Announcements.listen(appCtx); onDispose { off() } }
     UpdateDialogs()
     Box(Modifier.fillMaxSize()) {
         Scaffold(

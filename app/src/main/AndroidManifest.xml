@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Para instalar las actualizaciones de Drix descargadas dentro de la app -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Avisos del administrador (Android 13+ pide permiso al usuario) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <queries>
         <intent>

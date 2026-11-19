@@ -10,7 +10,9 @@ data class Order(
     /** Todos los distritos mencionados (recojo y destino). */
     val districts: List<District> = emptyList(),
     /** Todo el texto del pedido, normalizado, para buscar palabras bloqueadas. */
-    val blob: String = ""
+    val blob: String = "",
+    /** Nombre del pasajero (para el filtro de género). */
+    val passenger: String? = null
 ) {
     val perKm get() = if (tripKm > 0) fare / tripKm else Float.NaN   // NaN = desconocido (no se filtra)
     val sig get() = "$fare|$tripKm|$pickupKm|${district?.name}"
@@ -52,7 +54,7 @@ object OrderParser {
         val fare = FARE.find(joined)?.groupValues?.get(1)?.let(::num) ?: return null
         val d = distances(joined)
         if (d.size < 2) return null
-        return Order(fare, tripKm = d[1], pickupKm = d[0], district = Districts.findIn(texts), districts = Districts.allIn(texts), blob = Districts.blob(texts))
+        return Order(fare, tripKm = d[1], pickupKm = d[0], district = Districts.findIn(texts), districts = Districts.allIn(texts), blob = Districts.blob(texts), passenger = Gender.passengerName(texts))
     }
 
     /** Pantalla de DETALLE ("Aceptar por PEN6.50"): precio del botón; recojo = "~9,5 km" junto a S/x/km. */
@@ -63,7 +65,7 @@ object OrderParser {
         val all = distances(joined)
         val pickup = PERKM.find(joined)?.groupValues?.get(1)?.let(::num) ?: all.getOrNull(0) ?: Float.NaN
         val trip = all.firstOrNull { abs(it - pickup) > 0.01f } ?: Float.NaN
-        return Order(fare, trip, pickup, Districts.findIn(texts), Districts.allIn(texts), Districts.blob(texts))
+        return Order(fare, trip, pickup, Districts.findIn(texts), Districts.allIn(texts), Districts.blob(texts), Gender.passengerName(texts))
     }
 
     /** La lista muestra varios pedidos: devuelve el nodo más alto con exactamente 1 tarifa. */
@@ -110,10 +112,11 @@ object OrderEvaluator {
     }
 
     /** Revisión de seguridad (zonas rojas + palabras) sobre todo el texto de una pantalla. Null = nada bloqueado. */
-    fun blocked(texts: List<String>, zones: List<Zone>, words: List<String>): String? {
+    fun blocked(texts: List<String>, zones: List<Zone>, words: List<String>, genderBlock: Int = 0): String? {
         wordHit(Districts.blob(texts), words)?.let { return "Palabra bloqueada: «$it»" }
         val reds = zones.filter { !it.accept }.map { it.name }
         Districts.allIn(texts).firstOrNull { it.name in reds }?.let { return "Zona roja: ${it.name}" }
+        Gender.blockedReason(Gender.passengerName(texts), genderBlock)?.let { return it }
         return null
     }
 
@@ -127,10 +130,12 @@ object OrderEvaluator {
         // Zona roja: se mira el recojo Y el destino (cualquier distrito que aparezca en el pedido)
         val redHit = (o.districts + listOfNotNull(o.district)).firstOrNull { it.name in reds }
         val wordHit = wordHit(o.blob, words)
+        val genderHit = Gender.blockedReason(o.passenger, c.genderBlock)
         return when {
             !inShift -> Decision.Reject("Fuera de horario")
             wordHit != null -> Decision.Reject("Palabra bloqueada: «$wordHit»")
             redHit != null -> Decision.Reject("Zona roja: ${redHit.name}")
+            genderHit != null -> Decision.Reject(genderHit)
             greens.isNotEmpty() && dn == null && !c.unknownOk -> Decision.Reject("Distrito no identificado")
             greens.isNotEmpty() && dn != null && dn !in greens -> Decision.Reject("Fuera de zona: $dn")
             o.fare < c.minFare -> Decision.Reject("Tarifa < S/ %.2f".format(c.minFare))

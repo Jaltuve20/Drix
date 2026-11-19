@@ -14,6 +14,7 @@ import com.drix.app.core.*
 import com.drix.app.data.Config
 import com.drix.app.data.DrixPrefs
 import com.drix.app.data.DrixStats
+import com.drix.app.notify.Announcements
 import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +33,7 @@ class DrixAccessibilityService : AccessibilityService() {
 
     private var stopAuth: (() -> Unit)? = null
     private var stopWatch: (() -> Unit)? = null
+    private var stopAnn: (() -> Unit)? = null
 
     private var lastRun = 0L
     private var trailingScheduled = false
@@ -64,6 +66,7 @@ class DrixAccessibilityService : AccessibilityService() {
         stopAuth = AuthRepo.listen { u ->
             stopWatch?.invoke()
             stopWatch = if (u != null) AuthRepo.watchAccess { scope.launch { AuthRepo.checkAccess() } } else null
+            stopAnn?.invoke(); stopAnn = if (u != null) Announcements.listen(this) else null
         }
         // Activar → aviso "esperando pedidos". Pausar → se quita el aviso y se cancelan clics pendientes.
         scope.launch {
@@ -181,7 +184,7 @@ class DrixAccessibilityService : AccessibilityService() {
             if (o == null && !armed) { overlay.show("👀 Detalle ilegible"); return }
             val sig = o?.sig ?: armedSig
             // Aunque el pedido ya se haya aceptado en la lista, el DETALLE muestra el destino y el comentario completos: se vuelve a revisar zonas rojas y palabras.
-            val decision: Decision = if (armed) (OrderEvaluator.blocked(texts, zones, words)?.let { Decision.Reject(it) } ?: Decision.Accept)
+            val decision: Decision = if (armed) (OrderEvaluator.blocked(texts, zones, words, cfg.genderBlock)?.let { Decision.Reject(it) } ?: Decision.Accept)
                                      else OrderEvaluator.evaluate(o!!, cfg, zones, words)
             when (decision) {
                 is Decision.Accept -> {
@@ -304,5 +307,5 @@ class DrixAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() {}
-    override fun onDestroy() { stopAuth?.invoke(); stopWatch?.invoke(); scope.cancel(); instance = null; handler.removeCallbacksAndMessages(null); if (::overlay.isInitialized) overlay.hide(); super.onDestroy() }
+    override fun onDestroy() { stopAuth?.invoke(); stopWatch?.invoke(); stopAnn?.invoke(); scope.cancel(); instance = null; handler.removeCallbacksAndMessages(null); if (::overlay.isInitialized) overlay.hide(); super.onDestroy() }
 }

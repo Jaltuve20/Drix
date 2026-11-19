@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Campaign
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.PersonOff
 import androidx.compose.material.icons.outlined.Refresh
@@ -77,6 +78,10 @@ fun AdminScreen(onBack: () -> Unit) {
     var newEmail by remember { mutableStateOf("") }
     var renewFor by remember { mutableStateOf<String?>(null) }
     var revokeFor by remember { mutableStateOf<Client?>(null) }
+    var annTitle by remember { mutableStateOf("") }
+    var annMsg by remember { mutableStateOf("") }
+    var annConfirm by remember { mutableStateOf(false) }
+    var annSending by remember { mutableStateOf(false) }
 
     fun reload() {
         scope.launch {
@@ -115,6 +120,25 @@ fun AdminScreen(onBack: () -> Unit) {
                 val e = newEmail.trim().lowercase()
                 if (Patterns.EMAIL_ADDRESS.matcher(e).matches()) renewFor = e
                 else Toast.makeText(ctx, "Escribe un correo válido", Toast.LENGTH_SHORT).show()
+            }
+        }
+        DCard(index = 1) {
+            SectionTitle(Icons.Outlined.Campaign, "Enviar notificación a todos", "Les llega a todos los que tengan la app. Solo tú, como administrador, puedes enviarla.")
+            OutlinedTextField(
+                annTitle, { annTitle = it.take(80) }, singleLine = true, label = { Text("Título") },
+                shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Yellow, cursorColor = Yellow)
+            )
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                annMsg, { annMsg = it.take(500) }, label = { Text("Mensaje") }, minLines = 3, maxLines = 6,
+                shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = Line, focusedBorderColor = Yellow, cursorColor = Yellow)
+            )
+            Text("${annMsg.length}/500", fontSize = 11.sp, color = Muted, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
+            PillButton("Enviar a todos", icon = Icons.Outlined.Campaign) {
+                if (annTitle.isBlank() || annMsg.isBlank()) Toast.makeText(ctx, "Escribe el título y el mensaje", Toast.LENGTH_SHORT).show()
+                else annConfirm = true
             }
         }
         DCard(index = 1) {
@@ -166,6 +190,29 @@ fun AdminScreen(onBack: () -> Unit) {
         if (!loading && shown.isEmpty()) Text("Sin resultados.", color = Muted, fontSize = 13.sp)
     }
 
+    if (annConfirm) AlertDialog(
+        onDismissRequest = { if (!annSending) annConfirm = false },
+        title = { Text("¿Enviar a todos?", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text(annTitle.trim(), fontWeight = FontWeight.Bold)
+                Text(annMsg.trim(), modifier = Modifier.padding(top = 6.dp))
+                Text("Se enviará a todos los usuarios que tengan la app.", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 10.dp))
+            }
+        },
+        confirmButton = {
+            TextButton({
+                annSending = true
+                scope.launch {
+                    AdminRepo.sendAnnouncement(annTitle, annMsg)
+                        .onSuccess { Toast.makeText(ctx, "Notificación enviada", Toast.LENGTH_LONG).show(); annTitle = ""; annMsg = ""; annConfirm = false }
+                        .onFailure { Toast.makeText(ctx, AuthRepo.message(it) ?: "No se pudo enviar", Toast.LENGTH_LONG).show() }
+                    annSending = false
+                }
+            }, enabled = !annSending) { Text(if (annSending) "Enviando…" else "Sí, enviar", color = Ink, fontWeight = FontWeight.ExtraBold) }
+        },
+        dismissButton = { TextButton({ annConfirm = false }, enabled = !annSending) { Text("Cancelar", color = Muted) } }
+    )
     renewFor?.let { email ->
         RenewDialog(email, clients.firstOrNull { it.email == email }?.untilMs, { renewFor = null }) { months, paid ->
             scope.launch {

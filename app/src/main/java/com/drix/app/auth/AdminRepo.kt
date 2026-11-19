@@ -78,4 +78,15 @@ object AdminRepo {
     suspend fun revoke(email: String): Result<Unit> = runCatching {
         FirebaseFirestore.getInstance().collection("allowed").document(email.trim().lowercase()).delete().wait(); Unit
     }
+
+    /** Envía un aviso a todos los clientes. Las reglas de Firestore solo lo permiten al administrador. */
+    suspend fun sendAnnouncement(title: String, message: String): Result<Unit> = runCatching {
+        FirebaseFirestore.getInstance().collection("announcements").add(
+            mapOf(
+                "title" to title.trim(), "message" to message.trim(),
+                "createdAt" to FieldValue.serverTimestamp(), "by" to AuthRepo.user?.email.orEmpty()
+            )
+        ).wait()
+        Unit
+    }
 }

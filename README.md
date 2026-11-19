@@ -92,6 +92,20 @@ Lo nuevo en esta versión:
 **Tiempo real:** mientras el cliente tiene la app abierta (o el servicio de accesibilidad activo) y hay internet, los cambios del panel le llegan en segundos: si le **quitas el acceso**, la pantalla cambia a «Acceso pendiente» y la automatización se apaga; si le **renuevas**, el contador y el vencimiento se actualizan solos. Tras un vencimiento o un acceso quitado, la automatización queda apagada: el cliente debe volver a activar el interruptor de Inicio.
 Necesita internet al abrir la app (la lista se consulta siempre al servidor).
 
+## Actualizaciones automáticas (cómo funciona)
+1. Tú subes cambios a la rama **main** de GitHub. El workflow compila el APK y lo publica como una **Release** junto con `update.json` (versión, enlace al APK, huella SHA-256 y notas).
+2. La app, cada vez que se abre, lee `update.json`. Si la versión es mayor que la instalada, muestra **«Nueva versión»** → el usuario toca **Actualizar ahora**, se descarga con barra de progreso y se abre el instalador de Android. También hay un botón manual en **Perfil → Actualizaciones**.
+3. La versión sube sola en cada compilación (`100 + número de ejecución`). Las notas que ve el usuario salen de `RELEASE_NOTES.txt` (si no existe, del mensaje del commit). Para una actualización **obligatoria**: Actions → Build APK → Run workflow → marcar *mandatory*.
+4. **El APK que ya tienen instalado no sabe dónde buscar**: todos deben instalar UNA vez manualmente el APK de la primera Release (o del artefacto) generado con este workflow. Desde ahí, todo es automático.
+5. **Dónde se publica:** por defecto, en este mismo repositorio, que debe ser **público** (si es privado, el celular no puede descargar). Si tu código es privado: crea otro repositorio público (con un README), crea un token (Settings → Developer settings → Fine-grained tokens, permiso *Contents: read & write* sobre ese repositorio) y guárdalo como secreto **RELEASES_TOKEN**; en Settings → Variables crea **RELEASES_REPO** = `tuusuario/drix-releases`.
+6. Android solo instala la actualización si el APK está firmado con la **misma llave** (`app/drix.keystore`). No la cambies o tendrán que reinstalar.
+
+## Avisos del administrador
+Panel de administrador → **Enviar notificación a todos**. Se guarda en Firestore (`announcements`) y cada celular con la app la recibe como notificación (en tiempo real si la app está abierta o el servicio de accesibilidad activo; si no, al abrir la app). **Vuelve a publicar `firestore.rules`.** Para notificaciones instantáneas con la app totalmente cerrada haría falta Cloud Functions + FCM (plan Blaze de Firebase).
+
+## Filtro por género
+Parámetros → **Género del pasajero**: Todos / Sin hombres / Sin mujeres. La app de pedidos solo muestra el nombre, así que se deduce por el nombre; si es dudoso, no se bloquea. Lista de nombres en `core/Gender.kt`.
+
 ## Notas importantes
 - **Llave de firma (`app/drix.keystore`)**: es una llave de *pruebas* incluida para que el SHA-1 sea siempre el mismo (si no, GitHub Actions genera una distinta en cada compilación y Google deja de funcionar). Contraseña: `drixdebug`, alias `drix`. **No la uses para publicar en Play Store**; para eso crea una llave propia y privada.
 - **Si usas otro SHA-1** (otra llave): Firebase → Configuración del proyecto → Tus apps → **Agregar huella digital**, y vuelve a descargar `google-services.json`.
