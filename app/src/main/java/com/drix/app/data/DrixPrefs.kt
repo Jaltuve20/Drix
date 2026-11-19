@@ -17,7 +17,8 @@ data class Config(
     val minDelayMs: Int = 400,   // retraso mínimo antes de pulsar Aceptar
     val maxDelayMs: Int = 1200,  // retraso máximo (se elige al azar entre ambos)
     val unknownOk: Boolean = false, // aceptar aunque no se identifique el distrito
-    val genderBlock: Int = 0        // 0 = todos · 1 = bloquear hombres · 2 = bloquear mujeres
+    val genderBlock: Int = 0,       // 0 = todos · 1 = bloquear hombres · 2 = bloquear mujeres
+    val readDelay: Boolean = false  // «Pausa para leer»: cuenta 3, 2, 1 antes de aceptar
 )
 
 /** Distrito marcado: aceptar (verde) o rechazar (rojo). */
@@ -45,7 +46,7 @@ object DrixPrefs {
             startHour = sp.getInt("h1", d.startHour), endHour = sp.getInt("h2", d.endHour),
             enabled = sp.getBoolean("on", false), targetPkg = sp.getString("pkg", d.targetPkg)!!,
             minDelayMs = sp.getInt("dmin", d.minDelayMs), maxDelayMs = sp.getInt("dmax", d.maxDelayMs),
-            unknownOk = sp.getBoolean("unk", d.unknownOk), genderBlock = sp.getInt("gblk", d.genderBlock)
+            unknownOk = sp.getBoolean("unk", d.unknownOk), genderBlock = sp.getInt("gblk", d.genderBlock), readDelay = sp.getBoolean("rdly", d.readDelay)
         )
         _words.value = sp.getString("bwords", "")!!.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
         _zones.value = sp.getString("zones3", "")!!.split(";").mapNotNull {
@@ -59,7 +60,7 @@ object DrixPrefs {
         sp.edit().putFloat("km", c.minPerKm).putFloat("pick", c.maxPickupKm)
             .putFloat("fare", c.minFare).putFloat("trip", c.maxTripKm).putInt("h1", c.startHour)
             .putInt("h2", c.endHour).putBoolean("on", c.enabled).putString("pkg", c.targetPkg)
-            .putInt("dmin", c.minDelayMs).putInt("dmax", c.maxDelayMs).putBoolean("unk", c.unknownOk).putInt("gblk", c.genderBlock).apply()
+            .putInt("dmin", c.minDelayMs).putInt("dmax", c.maxDelayMs).putBoolean("unk", c.unknownOk).putInt("gblk", c.genderBlock).putBoolean("rdly", c.readDelay).apply()
     }
 
     /* ── Acceso (lista de correos habilitados). Lo consulta también el servicio de accesibilidad, sin depender de la pantalla. ── */

@@ -396,8 +396,9 @@ fun ParamsScreen() {
             }
         }
         GenderCard(2)
-        BlockedWordsCard(3)
-        Box(Modifier.enter(4)) {
+        ReadDelayCard(3)
+        BlockedWordsCard(4)
+        Box(Modifier.enter(5)) {
             PillButton(if (saved) "¡Guardado!" else "Guardar cambios", color = if (saved) Go else Yellow, icon = Icons.Outlined.CheckCircle) {
                 val lo = (d1.toIntOrNull() ?: cfg.minDelayMs).coerceIn(0, 5000)
                 val hi = (d2.toIntOrNull() ?: cfg.maxDelayMs).coerceIn(lo, 5000)
@@ -1096,4 +1097,47 @@ private fun GenderCard(index: Int) {
             fontSize = 11.sp, color = Muted, lineHeight = 15.sp, modifier = Modifier.padding(top = 8.dp)
         )
     }
+}
+
+/* ═════════════ PAUSA PARA LEER (3 s) ═════════════ */
+
+/** Interruptor «Pausa para leer»: antes de aceptar, cuenta 3, 2, 1. Al activarlo pide confirmación. */
+@Composable
+private fun ReadDelayCard(index: Int) {
+    val cfg by DrixPrefs.cfg.collectAsStateWithLifecycle()
+    var confirm by remember { mutableStateOf(false) }
+    DCard(index = index) {
+        SectionTitle(Icons.Outlined.Timer, "Pausa para leer", "Cuenta regresiva de 3 segundos antes de aceptar.")
+        Row(
+            Modifier.fillMaxWidth().background(Fog, RoundedCornerShape(16.dp)).padding(start = 14.dp, top = 6.dp, bottom = 6.dp, end = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Esperar 3 segundos antes de aceptar", Modifier.weight(1f), fontSize = 14.sp)
+            Switch(
+                cfg.readDelay,
+                { v -> if (v) confirm = true else DrixPrefs.update { it.copy(readDelay = false) } },
+                colors = SwitchDefaults.colors(checkedTrackColor = Go, checkedThumbColor = Color.White)
+            )
+        }
+        Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.Top) {
+            Icon(Icons.Outlined.Info, null, tint = Muted, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "El pedido se abre normal, pero antes de aceptarlo aparece un contador de 3, 2, 1 en el aviso flotante y recién entonces se acepta. Así tienes tiempo de leerlo.",
+                fontSize = 12.sp, color = Muted, lineHeight = 17.sp
+            )
+        }
+    }
+    if (confirm) AlertDialog(
+        onDismissRequest = { confirm = false },
+        containerColor = Color.White,
+        title = { Text("Pausa para leer", fontWeight = FontWeight.ExtraBold) },
+        text = { Text("¿Estás consciente de que aceptando esta opción podrías perder pedidos por algunos segundos?", color = Muted) },
+        confirmButton = {
+            TextButton({ DrixPrefs.update { it.copy(readDelay = true) }; confirm = false }) {
+                Text("Sí, activar", color = Ink, fontWeight = FontWeight.ExtraBold)
+            }
+        },
+        dismissButton = { TextButton({ confirm = false }) { Text("Cancelar", color = Muted) } }
+    )
 }

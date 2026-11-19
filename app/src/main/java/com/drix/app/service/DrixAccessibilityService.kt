@@ -240,10 +240,24 @@ class DrixAccessibilityService : AccessibilityService() {
 
     /* ───────────── Botón verde «Aceptar por …» con reintentos ───────────── */
 
+    /** «Pausa para leer»: con el pedido ya abierto cuenta 3, 2, 1 en el aviso y recién entonces acepta. */
+    private fun countdown(sig: String, left: Int, fare: Float?) {
+        // Si el cliente canceló o la pantalla cambió mientras se contaba, no se acepta nada
+        if (rootInActiveWindow?.let { OrderParser.findAccept(it) } == null) {
+            accepting = false; armedSig = ""; armedOrder = null; acceptingOrder = null
+            overlay.show("El pedido ya no está disponible", false)
+            return
+        }
+        if (left == 0) { tryAccept(sig, 0); return }
+        overlay.show((if (fare != null) "S/ %.1f · ".format(fare) else "") + "Aceptando en $left…", true)
+        handler.postDelayed({ countdown(sig, left - 1, fare) }, 1000)
+    }
+
     private fun startAccept(cfg: Config, sig: String, order: Order?) {
         accepting = true
         acceptingOrder = order
         val fare = order?.fare
+        if (cfg.readDelay) { countdown(sig, 3, fare); return }
         val w = randomDelay(cfg)
         overlay.show((if (fare != null) "✅ S/ %.1f · ".format(fare) else "✅ ") + "pulsando Aceptar en %d ms".format(w), true)
         handler.postDelayed({ tryAccept(sig, 0) }, w)
