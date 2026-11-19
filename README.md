@@ -103,6 +103,9 @@ Necesita internet al abrir la app (la lista se consulta siempre al servidor).
 ## Avisos del administrador
 Panel de administrador → **Enviar notificación a todos**. Se guarda en Firestore (`announcements`) y cada celular con la app la recibe como notificación (en tiempo real si la app está abierta o el servicio de accesibilidad activo; si no, al abrir la app). **Vuelve a publicar `firestore.rules`.** Para notificaciones instantáneas con la app totalmente cerrada haría falta Cloud Functions + FCM (plan Blaze de Firebase).
 
+## Botón flotante (activar / pausar sin abrir la app)
+Con el servicio de accesibilidad activo y la sesión iniciada aparece un botón con el logo de Drix sobre cualquier app. Tócalo y salen **▶ activar** y **✕ detener** (se cierran solos a los 4 s). Arrástralo para moverlo: se pega al borde y recuerda su posición. El anillo es **verde** cuando Drix está activo y **rojo** cuando está pausado.
+
 ## Pausa para leer
 Parámetros → **Pausa para leer**: con el interruptor activo, el pedido se abre normal, pero antes de pulsar «Aceptar» el aviso flotante cuenta 3, 2, 1. Al activarla se pide confirmación porque se pueden perder pedidos por esos segundos. Si el cliente cancela durante la cuenta, no se acepta nada.
 

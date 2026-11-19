@@ -1,1 +1,1 @@
-Nuevo: filtro por género (bloquear pedidos de hombres o de mujeres), pausa de 3 segundos para leer antes de aceptar y avisos del administrador a todos los usuarios.
+Nuevo: botón flotante con el logo para activar o pausar Drix sin abrir la app, pausa de 3 segundos para leer antes de aceptar, filtro por género y avisos del administrador.

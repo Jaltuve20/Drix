@@ -28,6 +28,7 @@ class DrixAccessibilityService : AccessibilityService() {
     companion object { @Volatile var instance: DrixAccessibilityService? = null }
 
     private lateinit var overlay: OverlayWidget
+    private lateinit var bubble: FloatingButton   // botón flotante ▶ / ✕ para activar o pausar sin abrir la app
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -61,12 +62,14 @@ class DrixAccessibilityService : AccessibilityService() {
         DrixPrefs.init(this)
         DrixStats.init(this)
         overlay = OverlayWidget(this)
+        bubble = FloatingButton(this, scope)
         // TIEMPO REAL: si el administrador quita o renueva el acceso, se vuelve a comprobar al instante (aunque la app esté cerrada).
         // Si lo quitó/venció, checkAccess() apaga la automatización; si renovó, deja de estar bloqueada.
         stopAuth = AuthRepo.listen { u ->
             stopWatch?.invoke()
             stopWatch = if (u != null) AuthRepo.watchAccess { scope.launch { AuthRepo.checkAccess() } } else null
             stopAnn?.invoke(); stopAnn = if (u != null) Announcements.listen(this) else null
+            if (u != null) bubble.show() else bubble.hide()   // el botón flotante solo aparece con la sesión iniciada
         }
         // Activar → aviso "esperando pedidos". Pausar → se quita el aviso y se cancelan clics pendientes.
         scope.launch {
@@ -321,5 +324,5 @@ class DrixAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() {}
-    override fun onDestroy() { stopAuth?.invoke(); stopWatch?.invoke(); stopAnn?.invoke(); scope.cancel(); instance = null; handler.removeCallbacksAndMessages(null); if (::overlay.isInitialized) overlay.hide(); super.onDestroy() }
+    override fun onDestroy() { if (::bubble.isInitialized) bubble.hide(); stopAuth?.invoke(); stopWatch?.invoke(); stopAnn?.invoke(); scope.cancel(); instance = null; handler.removeCallbacksAndMessages(null); if (::overlay.isInitialized) overlay.hide(); super.onDestroy() }
 }
