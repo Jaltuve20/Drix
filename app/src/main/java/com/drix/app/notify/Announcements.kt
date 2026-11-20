@@ -5,24 +5,31 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.drix.app.R
 import com.drix.app.data.DrixPrefs
 import com.drix.app.ui.MainActivity
+import com.google.android.gms.tasks.Tasks
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
+import java.util.concurrent.TimeUnit
 
 /**
  * Avisos del administrador. El admin escribe un aviso (colección «announcements» de Firestore) y cada celular
- * con la app lo recibe como notificación. Escucha en tiempo real mientras la app está abierta o el servicio de
- * accesibilidad está activo; si el celular estaba apagado o sin internet, se entrega al abrir la app.
+ * con la app lo recibe como notificación:
+ *  - EN VIVO mientras la app está abierta o el servicio de accesibilidad está activo ([listen]).
+ *  - EN SEGUNDO PLANO con la app cerrada: [BackgroundWorker] llama a [checkNow] cada ~15 min.
+ * Ambos caminos comparten «seen», así un mismo aviso nunca se muestra dos veces.
  */
 object Announcements {
     private const val CHANNEL = "drix_avisos"
 
-    /** Empieza a escuchar. Devuelve la función para detenerse. */
+    /** Empieza a escuchar en tiempo real. Devuelve la función para detenerse. */
     fun listen(ctx: Context): () -> Unit {
         val app = ctx.applicationContext
         DrixPrefs.init(app)
@@ -31,21 +38,38 @@ object Announcements {
             .orderBy("createdAt", Query.Direction.DESCENDING).limit(1)
             .addSnapshotListener { snap, _ ->
                 if (snap == null || !DrixPrefs.accessValid()) return@addSnapshotListener
-                val d = snap.documents.firstOrNull()
-                synchronized(this) {
-                    val seen = sp.getLong("seen", -1L)
-                    if (d == null) { // todavía no hay avisos: lo que se publique desde ahora sí se entrega
-                        if (seen == -1L) sp.edit().putLong("seen", System.currentTimeMillis()).apply()
-                        return@addSnapshotListener
-                    }
-                    val ts = d.getTimestamp("createdAt")?.toDate()?.time ?: return@addSnapshotListener
-                    if (seen == -1L) { sp.edit().putLong("seen", ts).apply(); return@addSnapshotListener } // instalación nueva: no se muestran avisos viejos
-                    if (ts <= seen) return@addSnapshotListener
-                    sp.edit().putLong("seen", ts).apply()
-                    show(app, (ts % Int.MAX_VALUE).toInt(), d.getString("title").orEmpty(), d.getString("message").orEmpty())
-                }
+                process(app, sp, snap.documents.firstOrNull())
             }
         return { reg.remove() }
+    }
+
+    /** Revisión única y BLOQUEANTE (hilo de fondo): trae el último aviso y lo muestra si es nuevo. */
+    fun checkNow(ctx: Context) {
+        val app = ctx.applicationContext
+        DrixPrefs.init(app)
+        if (FirebaseAuth.getInstance().currentUser == null || !DrixPrefs.accessValid()) return
+        val sp = app.getSharedPreferences("drix_ann", Context.MODE_PRIVATE)
+        val snap = Tasks.await(
+            FirebaseFirestore.getInstance().collection("announcements")
+                .orderBy("createdAt", Query.Direction.DESCENDING).limit(1).get(),
+            20, TimeUnit.SECONDS
+        )
+        process(app, sp, snap.documents.firstOrNull())
+    }
+
+    private fun process(app: Context, sp: SharedPreferences, d: DocumentSnapshot?) {
+        synchronized(this) {
+            val seen = sp.getLong("seen", -1L)
+            if (d == null) { // todavía no hay avisos: lo que se publique desde ahora sí se entrega
+                if (seen == -1L) sp.edit().putLong("seen", System.currentTimeMillis()).apply()
+                return
+            }
+            val ts = d.getTimestamp("createdAt")?.toDate()?.time ?: return
+            if (seen == -1L) { sp.edit().putLong("seen", ts).apply(); return } // instalación nueva: no se muestran avisos viejos
+            if (ts <= seen) return
+            sp.edit().putLong("seen", ts).apply()
+            show(app, (ts % Int.MAX_VALUE).toInt(), d.getString("title").orEmpty(), d.getString("message").orEmpty())
+        }
     }
 
     private fun show(ctx: Context, id: Int, title: String, message: String) {

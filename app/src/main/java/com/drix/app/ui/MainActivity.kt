@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
         DrixPrefs.init(this)
         AuthRepo.init(this)
         com.drix.app.data.DrixStats.init(this)
+        com.drix.app.notify.BackgroundChecks.schedule(this)
         setContent {
             MaterialTheme(
                 colorScheme = lightColorScheme(

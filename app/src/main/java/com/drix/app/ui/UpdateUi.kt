@@ -4,6 +4,8 @@ import android.widget.Toast
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -46,8 +48,16 @@ fun UpdateDialogs() {
             onDismissRequest = { if (!s.info.mandatory) Updater.dismiss() },
             containerColor = Color.White,
             icon = { Icon(Icons.Outlined.CloudDownload, null, tint = Amber) },
-            title = { Text("Nueva versión ${s.info.versionName}", fontWeight = FontWeight.ExtraBold) },
-            text = { Text(s.info.notes.ifBlank { "Mejoras y correcciones." }, color = Muted, fontSize = 14.sp) },
+            title = { Text("Una nueva actualización disponible", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text("Versión ${s.info.versionName}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Spacer(Modifier.height(10.dp))
+                    Text("Qué hay de nuevo", color = Amber, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text(s.info.notes.ifBlank { "Mejoras y correcciones." }, color = Muted, fontSize = 14.sp, lineHeight = 20.sp)
+                }
+            },
             confirmButton = {
                 TextButton({ scope.launch { Updater.download(ctx, s.info) } }) {
                     Text("Actualizar ahora", color = Ink, fontWeight = FontWeight.ExtraBold)

@@ -76,7 +76,8 @@ object Updater {
         }
     }
 
-    private fun fetch(): UpdateInfo {
+    /** Lee update.json (bloqueante: llamar desde un hilo de fondo). */
+    fun fetch(): UpdateInfo {
         val c = URL(BuildConfig.UPDATE_URL).openConnection() as HttpURLConnection
         c.connectTimeout = 8000
         c.readTimeout = 8000
