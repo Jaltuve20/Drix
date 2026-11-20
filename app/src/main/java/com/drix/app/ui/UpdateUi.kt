@@ -23,6 +23,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,12 +53,21 @@ fun UpdateDialogs() {
             icon = { Icon(Icons.Outlined.CloudDownload, null, tint = Amber) },
             title = { Text("Una nueva actualización disponible", fontWeight = FontWeight.ExtraBold) },
             text = {
+                // Si te saltaste versiones, aquí aparece lo nuevo de TODAS (la más reciente primero) y se instala directo la última.
+                val installed = remember { Updater.installedCode(ctx) }
+                val missed = remember(s.info) {
+                    s.info.history.filter { it.versionCode > installed && it.versionCode <= s.info.versionCode }.sortedByDescending { it.versionCode }
+                }
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text("Versión ${s.info.versionName}", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    if (missed.size > 1) Text("Se instala directo la última versión; incluye los cambios de las ${missed.size - 1} anteriores.", color = Muted, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
                     Spacer(Modifier.height(10.dp))
                     Text("Qué hay de nuevo", color = Amber, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     Spacer(Modifier.height(4.dp))
-                    Text(s.info.notes.ifBlank { "Mejoras y correcciones." }, color = Muted, fontSize = 14.sp, lineHeight = 20.sp)
+                    if (missed.size > 1) missed.forEach { n ->
+                        Text("Versión ${n.versionName}", fontWeight = FontWeight.Bold, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+                        Text(n.notes.ifBlank { "Mejoras y correcciones." }, color = Muted, fontSize = 14.sp, lineHeight = 20.sp)
+                    } else Text(s.info.notes.ifBlank { "Mejoras y correcciones." }, color = Muted, fontSize = 14.sp, lineHeight = 20.sp)
                 }
             },
             confirmButton = {
@@ -138,4 +150,34 @@ fun UpdateDialogs() {
 
         is Updater.State.Idle -> Unit
     }
+}
+
+/** Historial de actualizaciones: lo nuevo de cada versión, de la más reciente a la más antigua. Queda guardado en el teléfono. */
+@Composable
+fun UpdateHistoryDialog(onClose: () -> Unit) {
+    val ctx = LocalContext.current
+    var list by remember { mutableStateOf(Updater.history(ctx)) }
+    val installed = remember { Updater.installedCode(ctx) }
+    LaunchedEffect(Unit) { list = Updater.refreshHistory(ctx) }
+    AlertDialog(
+        onDismissRequest = onClose,
+        containerColor = Color.White,
+        title = { Text("Historial de actualizaciones", fontWeight = FontWeight.ExtraBold) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                if (list.isEmpty()) Text("Aún no hay historial guardado.", color = Muted, fontSize = 14.sp)
+                list.forEachIndexed { i, n ->
+                    if (i > 0) Spacer(Modifier.height(14.dp))
+                    val tag = buildString {
+                        append("Versión ${n.versionName.ifBlank { n.versionCode.toString() }}")
+                        if (n.date.isNotBlank()) append(" · ${n.date}")
+                        if (n.versionCode == installed) append(" · instalada")
+                    }
+                    Text(tag, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Amber)
+                    Text(n.notes.ifBlank { "Mejoras y correcciones." }, color = Muted, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.padding(top = 2.dp))
+                }
+            }
+        },
+        confirmButton = { TextButton(onClose) { Text("Cerrar", color = Ink, fontWeight = FontWeight.ExtraBold) } }
+    )
 }

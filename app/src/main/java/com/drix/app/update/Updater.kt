@@ -17,12 +17,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 
-/** Datos de la última versión publicada (archivo update.json). */
+/** Lo nuevo de UNA versión (una entrada del historial de update.json). */
+data class ReleaseNote(val versionCode: Long, val versionName: String, val date: String, val notes: String)
+
+/** Datos de la última versión publicada (archivo update.json). [history] = lo nuevo de las versiones anteriores, ya guardado. */
 data class UpdateInfo(
     val versionCode: Long, val versionName: String, val apkUrl: String,
-    val sha256: String, val notes: String, val mandatory: Boolean
+    val sha256: String, val notes: String, val mandatory: Boolean,
+    val history: List<ReleaseNote> = emptyList()
 )
 
 /**
@@ -55,7 +60,8 @@ object Updater {
     /** Busca una versión nueva. [manual] = el usuario lo pidió (se le avisa también si no hay nada o si falla). */
     suspend fun check(ctx: Context, manual: Boolean) {
         val s = _state.value
-        if (s is State.Available || s is State.Downloading || s is State.Ready || s is State.NeedPermission) return
+        // Si ya hay un aviso abierto se vuelve a consultar: así nunca se queda ofreciendo una versión vieja (se va directo a la última).
+        if (s is State.Downloading || s is State.Ready || s is State.NeedPermission) return
         if (BuildConfig.UPDATE_URL.isBlank()) {
             if (manual) _state.value = State.Error("Las actualizaciones no están configuradas en esta versión.", null)
             return
@@ -68,6 +74,7 @@ object Updater {
             Result.failure(e)
         }
         val info = result.getOrNull()
+        if (info != null) saveHistory(ctx, info.history)
         _state.value = when {
             result.isFailure -> if (manual) State.Error("No se pudo buscar actualizaciones. Revisa tu internet.", null) else State.Idle
             info != null && info.versionCode > installedCode(ctx) -> State.Available(info)
@@ -78,7 +85,9 @@ object Updater {
 
     /** Lee update.json (bloqueante: llamar desde un hilo de fondo). */
     fun fetch(): UpdateInfo {
-        val c = URL(BuildConfig.UPDATE_URL).openConnection() as HttpURLConnection
+        // «t=» evita que una copia vieja guardada en caché esconda la versión más reciente
+        val url = BuildConfig.UPDATE_URL + (if ('?' in BuildConfig.UPDATE_URL) "&" else "?") + "t=" + System.currentTimeMillis()
+        val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 8000
         c.readTimeout = 8000
         c.setRequestProperty("User-Agent", "Drix-Updater")
@@ -89,15 +98,56 @@ object Updater {
             return UpdateInfo(
                 versionCode = j.getLong("versionCode"), versionName = j.optString("versionName"),
                 apkUrl = j.getString("apkUrl"), sha256 = j.optString("sha256"),
-                notes = j.optString("notes"), mandatory = j.optBoolean("mandatory", false)
+                notes = j.optString("notes"), mandatory = j.optBoolean("mandatory", false),
+                history = parseHistory(j.optJSONArray("history"))
             )
         } finally {
             c.disconnect()
         }
     }
 
+    /* ── Historial de actualizaciones (se guarda en el teléfono: las pasadas no se pierden) ── */
+
+    private fun parseHistory(a: JSONArray?): List<ReleaseNote> {
+        if (a == null) return emptyList()
+        return (0 until a.length()).mapNotNull { i ->
+            val o = a.optJSONObject(i) ?: return@mapNotNull null
+            if (!o.has("versionCode")) null
+            else ReleaseNote(o.getLong("versionCode"), o.optString("versionName"), o.optString("date"), o.optString("notes"))
+        }
+    }
+
+    private fun prefs(ctx: Context) = ctx.applicationContext.getSharedPreferences("drix_upd", Context.MODE_PRIVATE)
+
+    /** Historial guardado en el teléfono, de la versión más nueva a la más vieja. */
+    fun history(ctx: Context): List<ReleaseNote> = runCatching {
+        parseHistory(JSONArray(prefs(ctx).getString("hist", "[]"))).sortedByDescending { it.versionCode }
+    }.getOrDefault(emptyList())
+
+    /** Suma lo que llegó del servidor al historial guardado (nunca borra versiones viejas). */
+    fun saveHistory(ctx: Context, incoming: List<ReleaseNote>) {
+        if (incoming.isEmpty()) return
+        val merged = (history(ctx).associateBy { it.versionCode } + incoming.associateBy { it.versionCode }).values
+            .sortedByDescending { it.versionCode }.take(60)
+        val arr = JSONArray()
+        merged.forEach { arr.put(JSONObject().put("versionCode", it.versionCode).put("versionName", it.versionName).put("date", it.date).put("notes", it.notes)) }
+        prefs(ctx).edit().putString("hist", arr.toString()).apply()
+    }
+
+    /** Trae el historial del servidor (si hay internet) y devuelve el historial completo guardado. */
+    suspend fun refreshHistory(ctx: Context): List<ReleaseNote> {
+        if (BuildConfig.UPDATE_URL.isNotBlank()) {
+            val info = withContext(Dispatchers.IO) { runCatching { fetch() }.getOrNull() }
+            if (info != null) saveHistory(ctx, info.history.ifEmpty { listOf(ReleaseNote(info.versionCode, info.versionName, "", info.notes)) })
+        }
+        return history(ctx)
+    }
+
     /** Descarga el APK mostrando el progreso y, al terminar, abre el instalador. */
-    suspend fun download(ctx: Context, info: UpdateInfo) {
+    suspend fun download(ctx: Context, requested: UpdateInfo) {
+        // Antes de bajar nada se confirma cuál es la ÚLTIMA versión publicada: si salió otra mientras tanto, se descarga esa directamente.
+        val info = withContext(Dispatchers.IO) { runCatching { fetch() }.getOrNull() }
+            ?.takeIf { it.versionCode >= requested.versionCode } ?: requested
         _state.value = State.Downloading(info, 0f)
         try {
             val file = withContext(Dispatchers.IO) {

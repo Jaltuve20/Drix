@@ -207,3 +207,11 @@ El número interno de versión (`versionCode`) sube solo en cada ejecución.
   los usuarios deberán desinstalar/instalar **una sola vez**. Guarda `release.keystore` y sus contraseñas en un lugar
   seguro: si la pierdes, nadie podrá actualizar la app.
 - Si algo falla solo en release, compila con `gradle assembleRelease -PnoMinify` para descartar la optimización.
+
+## Actualizaciones: directo a la última y con historial
+
+- Cada celular lee siempre el `update.json` de la **última** Release, así que salta directo a la versión más reciente (no pasa una por una). Antes de descargar, la app vuelve a confirmar cuál es la última.
+- Si una compilación lenta termina después de otra, ya no pisa a la más nueva: solo se marca como «última» la de número mayor. Si subes varios cambios seguidos, solo queda en cola el más reciente.
+- **Cómo escribir lo nuevo:** en `RELEASE_NOTES.txt` pon SOLO lo de la próxima versión (borra lo anterior). El workflow lo suma solo al historial dentro de `update.json` (campo `history`, máx. 40 versiones). Si no cambias el archivo, esa versión dice «Mejoras y correcciones.» en lugar de repetir el texto anterior.
+- Si alguien se saltó versiones, el aviso le muestra lo nuevo de todas (la más reciente primero). El historial queda guardado en el teléfono y se ve en **Perfil → Historial de actualizaciones**.
+

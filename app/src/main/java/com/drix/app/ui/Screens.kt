@@ -1056,6 +1056,10 @@ fun ProfileScreen(profile: Profile, onAdmin: () -> Unit = {}) {
             GhostButton("Buscar actualizaciones", icon = Icons.Outlined.Sync) {
                 scope.launch { Updater.check(ctx, manual = true) }
             }
+            Spacer(Modifier.height(10.dp))
+            var showHistory by remember { mutableStateOf(false) }
+            GhostButton("Historial de actualizaciones", icon = Icons.Outlined.Info) { showHistory = true }
+            if (showHistory) UpdateHistoryDialog { showHistory = false }
         }
         if (profile.isAdmin) PillButton("Panel de administrador", color = Charcoal, icon = Icons.Outlined.AdminPanelSettings, onClick = onAdmin)
         DebugCard(5)
