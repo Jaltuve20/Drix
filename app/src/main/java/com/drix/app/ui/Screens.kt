@@ -474,6 +474,16 @@ private fun SetupCard() {
                 Spacer(Modifier.height(10.dp))
                 PillButton("Configurar ahora", icon = Icons.Outlined.Settings) { ctx.ensurePermissions() }
             }
+            if (!access) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "¿Android dice «Configuración restringida» y no te deja activarlo? Abre los ajustes de Drix, toca ⋮ (arriba a la derecha), elige «Permitir ajustes restringidos» y vuelve a intentarlo.",
+                    fontSize = 12.sp, color = Muted, lineHeight = 16.sp
+                )
+                TextButton({
+                    ctx.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${ctx.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }) { Text("Abrir ajustes de Drix", color = Ink, fontWeight = FontWeight.SemiBold) }
+            }
         }
     }
 }

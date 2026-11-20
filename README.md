@@ -77,6 +77,21 @@ Lo nuevo en esta versión:
 
 ---
 
+## Instalación sin tantas alertas (Play Protect)
+**Realidad:** ninguna app puede quitar ni saltarse el aviso de Play Protect; lo decide Google al instalar un APK de fuera de la Play Store. Lo que sí se hizo para que sea lo más leve posible:
+- El APK que se publica ahora es de **release firmado** (antes era de depuración, que Play Protect mira con más sospecha). Usa la misma llave, así que se actualiza sin desinstalar.
+- Dentro de la app, «Falta configurar» explica el aviso de **«Configuración restringida»** de Android 13+ y abre directo los ajustes de Drix.
+
+**Lo que queda (una sola vez por instalación):** si Play Protect avisa, el cliente toca **«Más detalles» → «Instalar de todos modos»**. No hace falta desactivar Play Protect.
+
+**Para reducirlo más (opcional):**
+1. Usa **tu propia llave privada** (secretos `RELEASE_KEYSTORE`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD` en GitHub) y **no la cambies nunca**. Ojo: cambiar de llave obliga a desinstalar e instalar de nuevo.
+2. Cuando Play Protect marque el APK, envíalo a análisis («Enviar app para análisis») y/o usa el formulario de apelaciones de Play Protect para desarrolladores.
+3. Mira la verificación de desarrolladores de Android, que Google va exigiendo para apps fuera de la Play Store.
+
+**Mensaje listo para tus clientes:**
+> Al instalar, si Android dice que Drix no es de una tienda: toca *Más detalles* → *Instalar de todos modos*. Luego abre Drix, regístrate y, al activar la accesibilidad, si dice «Configuración restringida»: Ajustes de Drix → ⋮ → *Permitir ajustes restringidos* y vuelve a activarla. Es normal y solo se hace una vez.
+
 ## Novedades v1.8.0
 - **Botón flotante:** un toque activa/pausa Drix; mantenlo pulsado para «Abrir Drix» o ✕ ocultarlo. Se vuelve a mostrar en Perfil → «Mostrar botón flotante».
 - **Top Drix del mes (panel admin):** pedidos aceptados por cada cliente en el mes, ordenados de mayor a menor, con selector de mes y el total por cliente. Se guarda en la colección `monthly` (**vuelve a publicar `firestore.rules`**).
