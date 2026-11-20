@@ -1,4 +1,1 @@
-• Administrador: cuando alguien se registra te llega «Tienes un correo pendiente por activar», con botones Activar y Rechazar.
-• Las actualizaciones van directo a la última versión y muestran lo nuevo de todas las que te saltaste.
-• Nuevo: Perfil → Historial de actualizaciones (queda guardado).
-• Panel de administrador más rápido.
+
