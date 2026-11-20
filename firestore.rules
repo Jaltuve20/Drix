@@ -29,6 +29,20 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Solicitudes de acceso: al registrarse, cada cuenta crea requests/{correo} con status = pending. El administrador la ve
+    // (y recibe la notificación «Tienes un correo pendiente por activar») y la activa o la rechaza (status = approved / rejected).
+    match /requests/{email} {
+      allow get: if signedIn() && myEmail() == email;
+      allow read, write: if isAdmin();
+      allow create: if signedIn() && myEmail() == email
+        && request.resource.data.keys().hasOnly(['email', 'uid', 'name', 'phone', 'status', 'createdAt'])
+        && request.resource.data.email == email && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.name is string && request.resource.data.name.size() <= 80
+        && request.resource.data.phone is string && request.resource.data.phone.size() <= 20
+        && request.resource.data.createdAt == request.time;
+    }
+
     // Sesión única: sessions/{uid} guarda el identificador de la sesión activa. Cada vez que alguien inicia sesión en un
     // teléfono escribe uno nuevo; los demás teléfonos de esa cuenta lo detectan y se cierran solos.
     match /sessions/{uid} {

@@ -378,11 +378,12 @@ fun ProfileLoadErrorScreen(msg: String, onRetry: () -> Unit, onSignOut: () -> Un
 
 /** Pantalla para cuentas cuyo correo aún no fue verificado/habilitado por el administrador. */
 @Composable
-fun NoAccessScreen(email: String, expired: Boolean, onRetry: () -> Unit, onSignOut: () -> Unit) {
+fun NoAccessScreen(email: String, expired: Boolean, rejected: Boolean, onRetry: () -> Unit, onSignOut: () -> Unit) {
     val ctx = LocalContext.current
     AuthPage(
-        "Acceso pendiente",
-        "Tu correo $email todavía no está habilitado. Escríbenos por WhatsApp con ese correo, verificamos tu compra y te damos acceso."
+        if (rejected) "Solicitud rechazada" else "Acceso pendiente",
+        if (rejected) "Tu solicitud con el correo $email no fue aprobada. Si crees que es un error, escríbenos por WhatsApp."
+        else "Ya avisamos al administrador de tu registro con $email. En cuanto lo active podrás entrar (esta pantalla se actualiza sola). Si tienes prisa, escríbenos por WhatsApp con ese correo y verificamos tu compra."
     ) {
         MainButton("Ya me habilitaron · Reintentar", false, onRetry)
         TextButton({

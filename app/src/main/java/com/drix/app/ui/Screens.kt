@@ -193,9 +193,7 @@ fun PillButton(
                 Icon(icon, null, tint = fg, modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = iconRotation })
                 Spacer(Modifier.width(8.dp))
             }
-            AnimatedContent(text, transitionSpec = { fadeIn(tween(200)) togetherWith fadeOut(tween(120)) }, label = "ptext") { s ->
-                Text(s, color = fg, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1)
-            }
+            Text(text, color = fg, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1)
         }
     }
 }

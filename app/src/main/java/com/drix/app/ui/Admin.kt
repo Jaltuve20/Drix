@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Campaign
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.PersonOff
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
@@ -31,6 +32,9 @@ import androidx.compose.ui.unit.sp
 import com.drix.app.auth.AdminRepo
 import com.drix.app.auth.AuthRepo
 import com.drix.app.auth.Client
+import com.drix.app.auth.PendingRequest
+import com.drix.app.notify.AdminAlerts
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.drix.app.auth.RankRow
 import com.drix.app.data.MonthlyRank
 import java.text.SimpleDateFormat
@@ -41,17 +45,17 @@ import kotlinx.coroutines.launch
 /** Precio de venta (pago único, en soles). Cambia aquí tu precio; en el diálogo también puedes escribir otro monto. */
 private const val PRICE = 20.0
 
-private enum class St(val label: String) { NONE("Pendiente"), ACTIVE("Activa"), ADMIN("Admin") }
+private enum class St(val label: String) { NONE("Pendiente"), REJECTED("Rechazada"), ACTIVE("Activa"), ADMIN("Admin") }
 
 private val Red = Color(0xFFDC2626); private val Orange = Color(0xFFD97706)
 
 private fun Client.status(): St = when {
-    !hasDoc -> St.NONE
+    !hasDoc -> if (rejected) St.REJECTED else St.NONE
     isAdminRow -> St.ADMIN
     else -> St.ACTIVE
 }
 
-private fun St.color() = when (this) { St.NONE -> Orange; St.ACTIVE -> Go; else -> Muted }
+private fun St.color() = when (this) { St.NONE -> Orange; St.REJECTED -> Red; St.ACTIVE -> Go; else -> Muted }
 
 /** Panel de administrador: ver clientes, activar y renovar sin abrir la consola de Firebase. */
 @Composable
@@ -65,6 +69,8 @@ fun AdminScreen(onBack: () -> Unit) {
     var newEmail by remember { mutableStateOf("") }
     var renewFor by remember { mutableStateOf<String?>(null) }
     var revokeFor by remember { mutableStateOf<Client?>(null) }
+    var rejectFor by remember { mutableStateOf<String?>(null) }
+    var pending by remember { mutableStateOf<List<PendingRequest>>(emptyList()) }
     var annTitle by remember { mutableStateOf("") }
     var annMsg by remember { mutableStateOf("") }
     var annConfirm by remember { mutableStateOf(false) }
@@ -93,14 +99,27 @@ fun AdminScreen(onBack: () -> Unit) {
         }
     }
     LaunchedEffect(Unit) { reload() }
+    // TIEMPO REAL: correos que se acaban de registrar y esperan que los actives o rechaces
+    DisposableEffect(Unit) { val off = AdminRepo.watchPending { pending = it }; onDispose { off() } }
+    // Botones «Activar» / «Rechazar» de la notificación: abren el diálogo de ese correo
+    val act by AdminAlerts.action.collectAsStateWithLifecycle()
+    LaunchedEffect(act) {
+        val a = act ?: return@LaunchedEffect
+        if (a.email.isNotBlank()) { if (a.kind == "activate") renewFor = a.email else if (a.kind == "reject") rejectFor = a.email }
+        AdminAlerts.action.value = null
+    }
     LaunchedEffect(monthKey) { showAllRank = false; reloadRank() }
     val ordersByEmail = rank.associate { it.email.lowercase() to it.orders }
     BackHandler(onBack = onBack)
 
-    val shown = clients
-        .filter { c -> query.isBlank() || listOf(c.email, c.name, c.phone).any { it.contains(query.trim(), ignoreCase = true) } }
-        .sortedWith(compareBy({ it.status().ordinal }, { it.name.ifBlank { it.email }.lowercase() })) // pendientes primero
-    val counts = clients.groupingBy { it.status() }.eachCount()
+    // Memoizado: ordenar y filtrar solo cuando cambian los clientes o la búsqueda (no en cada recomposición)
+    val shown = remember(clients, query) {
+        clients
+            .filter { c -> query.isBlank() || listOf(c.email, c.name, c.phone).any { it.contains(query.trim(), ignoreCase = true) } }
+            .sortedWith(compareBy({ it.status().ordinal }, { it.name.ifBlank { it.email }.lowercase() })) // pendientes primero
+    }
+    val counts = remember(clients) { clients.groupingBy { it.status() }.eachCount() }
+    var visibleCount by remember(query) { mutableStateOf(20) } // solo se dibujan 20 tarjetas a la vez: la pantalla va fluida con cientos de clientes
 
     Screen(hero = {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -110,6 +129,23 @@ fun AdminScreen(onBack: () -> Unit) {
         Spacer(Modifier.height(14.dp))
         HeroTitle("Panel", "Admin", "Verifica el pago y activa cada correo una sola vez: el acceso es de por vida. Sin tu activación nadie entra.")
     }) {
+        if (pending.isNotEmpty()) DCard(index = 0) {
+            SectionTitle(
+                Icons.Outlined.NotificationsActive,
+                if (pending.size == 1) "Tienes un correo pendiente por activar" else "Tienes ${pending.size} correos pendientes por activar",
+                "Actívalos o recházalos desde aquí."
+            )
+            pending.forEachIndexed { i, r ->
+                if (i > 0) Spacer(Modifier.height(14.dp))
+                Text(r.name.ifBlank { r.email }, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                if (r.name.isNotBlank()) Text(r.email, fontSize = 12.sp, color = Muted)
+                if (r.phone.isNotBlank()) Text(prettyPhone(r.phone), fontSize = 12.sp, color = Muted)
+                Row(Modifier.fillMaxWidth().padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PillButton("Rechazar", Modifier.weight(1f), Charcoal, Icons.Outlined.PersonOff) { rejectFor = r.email }
+                    PillButton("Activar", Modifier.weight(1f), Yellow, Icons.Outlined.WorkspacePremium) { renewFor = r.email }
+                }
+            }
+        }
         DCard(index = 0) {
             SectionTitle(Icons.Outlined.WorkspacePremium, "Activar por correo (de por vida)")
             OutlinedTextField(
@@ -201,7 +237,7 @@ fun AdminScreen(onBack: () -> Unit) {
             )
             error?.let { Text(it, color = Red, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
         }
-        shown.forEachIndexed { idx, c ->
+        shown.take(visibleCount).forEachIndexed { idx, c ->
             val st = c.status()
             DCard(index = idx + 2) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -224,10 +260,14 @@ fun AdminScreen(onBack: () -> Unit) {
                             val msg = "Hola ${c.name.ifBlank { "" }}, te escribo de Drix."
                             ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/${c.phone.removePrefix("+")}?text=" + Uri.encode(msg))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                         }
+                        if (!c.hasDoc && !c.rejected) PillButton("Rechazar", Modifier.weight(1f), Charcoal, Icons.Outlined.PersonOff) { rejectFor = c.email }
                         if (c.hasDoc) PillButton("Quitar acceso", Modifier.weight(1f), Charcoal, Icons.Outlined.PersonOff) { revokeFor = c }
                     }
                 }
             }
+        }
+        if (shown.size > visibleCount) TextButton({ visibleCount += 20 }, Modifier.fillMaxWidth()) {
+            Text("Ver más (${shown.size - visibleCount} restantes)", color = Ink, fontWeight = FontWeight.SemiBold)
         }
         if (!loading && shown.isEmpty()) Text("Sin resultados.", color = Muted, fontSize = 13.sp)
     }
@@ -263,6 +303,23 @@ fun AdminScreen(onBack: () -> Unit) {
                     .onFailure { Toast.makeText(ctx, AuthRepo.message(it) ?: "No se pudo guardar", Toast.LENGTH_LONG).show() }
             }
         }
+    }
+    rejectFor?.let { e ->
+        AlertDialog(
+            onDismissRequest = { rejectFor = null },
+            title = { Text("¿Rechazar solicitud?", fontWeight = FontWeight.Bold) },
+            text = { Text("$e no podrá entrar a la app y verá que su solicitud fue rechazada. Podrás activarlo después desde la lista de clientes.") },
+            confirmButton = {
+                TextButton({
+                    scope.launch {
+                        AdminRepo.reject(e)
+                            .onSuccess { Toast.makeText(ctx, "Solicitud rechazada", Toast.LENGTH_SHORT).show(); rejectFor = null; reload() }
+                            .onFailure { Toast.makeText(ctx, AuthRepo.message(it) ?: "No se pudo rechazar", Toast.LENGTH_LONG).show() }
+                    }
+                }) { Text("Sí, rechazar", color = Red, fontWeight = FontWeight.ExtraBold) }
+            },
+            dismissButton = { TextButton({ rejectFor = null }) { Text("Cancelar", color = Muted) } }
+        )
     }
     revokeFor?.let { c ->
         AlertDialog(

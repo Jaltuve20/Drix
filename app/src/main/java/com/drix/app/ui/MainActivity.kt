@@ -77,6 +77,7 @@ class MainActivity : ComponentActivity() {
         com.drix.app.data.DrixStats.init(this)
         com.drix.app.notify.BackgroundChecks.schedule(this)
         com.drix.app.notify.Nudges.schedule(this)
+        com.drix.app.notify.AdminAlerts.handleIntent(intent)
         setContent {
             MaterialTheme(
                 colorScheme = lightColorScheme(
@@ -90,6 +91,12 @@ class MainActivity : ComponentActivity() {
                 )
             ) { DrixRoot() }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        com.drix.app.notify.AdminAlerts.handleIntent(intent)
     }
 }
 
@@ -107,7 +114,7 @@ private sealed interface PState {
     data object Loading : PState
     data class Loaded(val p: Profile?) : PState
     data class Failed(val msg: String) : PState
-    data class Denied(val expired: Boolean) : PState
+    data class Denied(val expired: Boolean, val rejected: Boolean = false) : PState
 }
 
 /** Flujo: splash → login/registro → (perfil incompleto) completar datos → (cuenta nueva) tutorial → app. */
@@ -121,7 +128,7 @@ fun DrixRoot() {
     val busy by AuthRepo.busy.collectAsStateWithLifecycle()
     val version by AuthRepo.version.collectAsStateWithLifecycle()
     DisposableEffect(Unit) { val off = AuthRepo.listen { user = it }; onDispose { off() } }
-    LaunchedEffect(Unit) { delay(1300); splash = false }
+    LaunchedEffect(Unit) { delay(900); splash = false }
     // TIEMPO REAL: si el administrador te quita el acceso o te renueva, la pantalla cambia sola (sin pantalla de carga ni salir de la app).
     DisposableEffect(user?.uid) {
         val u = user
@@ -130,7 +137,7 @@ fun DrixRoot() {
                 scope.launch {
                     AuthRepo.loadProfile(ctx, u.uid).fold(
                         { ps = PState.Loaded(it) },
-                        { if (it is AccessDenied) ps = PState.Denied(it.expired) } // otros errores (red) se ignoran
+                        { if (it is AccessDenied) ps = PState.Denied(it.expired, it.rejected) } // otros errores (red) se ignoran
                     )
                 }
             }
@@ -140,7 +147,7 @@ fun DrixRoot() {
     LaunchedEffect(user?.uid, version) {
         ps = PState.Loading
         val u = user ?: return@LaunchedEffect
-        ps = AuthRepo.loadProfile(ctx, u.uid).fold({ PState.Loaded(it) }, { if (it is AccessDenied) PState.Denied(it.expired) else PState.Failed(AuthRepo.message(it) ?: "Revisa tu conexión.") })
+        ps = AuthRepo.loadProfile(ctx, u.uid).fold({ PState.Loaded(it) }, { if (it is AccessDenied) PState.Denied(it.expired, it.rejected) else PState.Failed(AuthRepo.message(it) ?: "Revisa tu conexión.") })
     }
     val st = ps
     val p = (st as? PState.Loaded)?.p
@@ -169,7 +176,7 @@ fun DrixRoot() {
             "splash" -> SplashScreen()
             "kicked" -> KickedScreen(ex.orEmpty()) { AuthRepo.kicked.value = null }
             "auth" -> AuthFlow()
-            "denied" -> NoAccessScreen(user?.email.orEmpty(), (st as? PState.Denied)?.expired ?: false, { AuthRepo.version.value++ }, { AuthRepo.signOut() })
+            "denied" -> NoAccessScreen(user?.email.orEmpty(), (st as? PState.Denied)?.expired ?: false, (st as? PState.Denied)?.rejected ?: false, { AuthRepo.version.value++ }, { AuthRepo.signOut() })
             "failed" -> ProfileLoadErrorScreen((st as? PState.Failed)?.msg.orEmpty(), { AuthRepo.version.value++ }, { AuthRepo.signOut() })
             "complete" -> CompleteProfileScreen(user?.email.orEmpty())
             "tutorial" -> p?.let { pr ->
@@ -207,6 +214,13 @@ fun DrixApp(profile: Profile) {
     }
     DisposableEffect(Unit) { val off = Announcements.listen(appCtx); onDispose { off() } }
     DisposableEffect(Unit) { val off = com.drix.app.notify.Polls.listen(appCtx, notify = false); onDispose { off() } } // encuestas del admin
+    // Administrador: avisos de correos pendientes por activar (con la app abierta) y apertura del panel desde la notificación
+    DisposableEffect(profile.isAdmin) {
+        val off: () -> Unit = if (profile.isAdmin) com.drix.app.notify.AdminAlerts.listen(appCtx) else ({})
+        onDispose { off() }
+    }
+    val adminAction by com.drix.app.notify.AdminAlerts.action.collectAsStateWithLifecycle()
+    LaunchedEffect(adminAction) { if (adminAction != null && profile.isAdmin) showAdmin = true }
     UpdateDialogs()
     PollDialog()
     Box(Modifier.fillMaxSize()) {

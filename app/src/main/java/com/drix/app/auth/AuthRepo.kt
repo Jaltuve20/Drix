@@ -38,7 +38,7 @@ data class Profile(
 }
 
 /** El correo no está en la lista de acceso (allowed/{correo}) o la sesión se abrió en otro teléfono. */
-class AccessDenied(val expired: Boolean) : Exception(if (expired) "Acceso vencido" else "Sin acceso")
+class AccessDenied(val expired: Boolean, val rejected: Boolean = false) : Exception(if (expired) "Acceso vencido" else if (rejected) "Solicitud rechazada" else "Sin acceso")
 
 object AuthRepo {
     private val auth get() = FirebaseAuth.getInstance()
@@ -115,14 +115,44 @@ object AuthRepo {
         fun deny(expired: Boolean): Nothing { DrixPrefs.revokeAccess(); throw AccessDenied(expired) }
         if (email.isBlank()) deny(false)
         val admin = runCatching { db.collection("admins").document(email).get(Source.SERVER).wait().exists() }.getOrDefault(false)
+        DrixPrefs.setAdmin(admin)
         if (admin) { DrixPrefs.grantAccess(); return AccessInfo(true) }
         val a = db.collection("allowed").document(email).get(Source.SERVER).wait()
         // Los documentos de la antigua prueba gratis (trial = true) ya no dan acceso: hay que activarlos desde el panel.
-        if (!a.exists() || a.getBoolean("trial") == true) deny(false)
+        if (!a.exists() || a.getBoolean("trial") == true) {
+            // Sin acceso: se asegura que el administrador tenga la solicitud (y se avisa si ya la rechazó).
+            val rejected = syncRequest()
+            DrixPrefs.revokeAccess(); throw AccessDenied(false, rejected)
+        }
         ensureSession()
         DrixPrefs.grantAccess()
         return AccessInfo(false)
     }
+
+    /**
+     * Crea la solicitud requests/{correo} (status = pending) si aún no existe: es lo que le llega al administrador como
+     * «Tienes un correo pendiente por activar». Devuelve true si el administrador ya la rechazó. Nunca lanza error.
+     */
+    private suspend fun syncRequest(name: String? = null, phone: String? = null): Boolean = runCatching {
+        val u = user ?: return@runCatching false
+        val email = u.email?.trim()?.lowercase().orEmpty()
+        if (email.isBlank()) return@runCatching false
+        val db = FirebaseFirestore.getInstance()
+        val ref = db.collection("requests").document(email)
+        val snap = ref.get(Source.SERVER).wait()
+        if (snap.exists()) return@runCatching snap.getString("status") == "rejected"
+        var n = name; var p = phone
+        if (n == null || p == null) {
+            val prof = runCatching { db.collection("users").document(u.uid).get().wait() }.getOrNull()
+            if (n == null) n = prof?.getString("name") ?: u.displayName.orEmpty()
+            if (p == null) p = prof?.getString("phone").orEmpty()
+        }
+        ref.set(mapOf(
+            "email" to email, "uid" to u.uid, "name" to n.orEmpty().take(80), "phone" to p.orEmpty().take(20),
+            "status" to "pending", "createdAt" to FieldValue.serverTimestamp()
+        )).wait()
+        false
+    }.getOrDefault(false)
 
     /* ── Sesión única: una cuenta solo puede estar abierta en UN teléfono ── */
 
@@ -183,7 +213,7 @@ object AuthRepo {
         val email = user?.email?.trim()?.lowercase().orEmpty()
         if (email.isBlank()) return {}
         val db = FirebaseFirestore.getInstance()
-        val regs = listOf("allowed", "admins").map { col ->
+        val regs = listOf("allowed", "admins", "requests").map { col ->
             var first = true
             db.collection(col).document(email).addSnapshotListener { snap, err ->
                 if (err != null) return@addSnapshotListener                 // sin red / sin permiso: se ignora
@@ -218,6 +248,7 @@ object AuthRepo {
         )
         if (!existed) { data["tutorialDone"] = false; data["createdAt"] = FieldValue.serverTimestamp() } // nuevo → verá el tutorial
         ref.set(data, SetOptions.merge()).wait()
+        runCatching { syncRequest("$first $last", phone) } // avisa al administrador: correo pendiente por activar
         runCatching { u.updateProfile(UserProfileChangeRequest.Builder().setDisplayName("$first $last").build()).wait() }
         Unit
     }
@@ -238,7 +269,7 @@ object AuthRepo {
     /** Cerrar sesión también apaga la automatización. */
     fun signOut() {
         user?.uid?.let { if (::app.isInitialized) sessionPrefs().edit().remove(sidKey(it)).apply() }
-        DrixPrefs.revokeAccess(); auth.signOut()
+        DrixPrefs.revokeAccess(); DrixPrefs.setAdmin(false); auth.signOut()
     }
 
     /** Traduce los errores de Firebase a mensajes claros en español. */

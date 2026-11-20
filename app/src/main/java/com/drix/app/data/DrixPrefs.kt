@@ -84,6 +84,10 @@ object DrixPrefs {
     }
     fun accessValid(): Boolean = ::sp.isInitialized && sp.getBoolean("acc_ok", false)
 
+    /** Este teléfono es de un administrador (lo usan las notificaciones de solicitudes pendientes en segundo plano). */
+    fun setAdmin(v: Boolean) { if (::sp.isInitialized) sp.edit().putBoolean("is_admin", v).apply() }
+    fun isAdmin(): Boolean = ::sp.isInitialized && sp.getBoolean("is_admin", false)
+
     fun setBubble(v: Boolean) { _bubble.value = v; if (::sp.isInitialized) sp.edit().putBoolean("bubble", v).apply() }
     fun setNudges(v: Boolean) { _nudges.value = v; if (::sp.isInitialized) sp.edit().putBoolean("nudges", v).apply() }
 

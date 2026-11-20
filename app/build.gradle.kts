@@ -10,8 +10,8 @@ android {
     defaultConfig {
         applicationId = "com.drix.app"; minSdk = 26; targetSdk = 35
         // En GitHub Actions el número de versión sube solo (VERSION_CODE / VERSION_NAME); en local usa estos valores.
-        versionCode = (System.getenv("VERSION_CODE") ?: "12").toInt()
-        versionName = System.getenv("VERSION_NAME") ?: "1.7.0"
+        versionCode = (System.getenv("VERSION_CODE") ?: "13").toInt()
+        versionName = System.getenv("VERSION_NAME") ?: "1.8.0"
         // Dirección del archivo update.json que lee el actualizador dentro de la app (vacío = sin actualizaciones)
         buildConfigField("String", "UPDATE_URL", "\"${System.getenv("UPDATE_URL") ?: ""}\"")
     }
@@ -59,6 +59,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.work:work-runtime-ktx:2.9.1") // revisiones en segundo plano (avisos del admin y actualizaciones con la app cerrada)
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1") // aplica los perfiles precompilados de Compose al instalar: arranque y scroll más fluidos
     implementation(platform("com.google.firebase:firebase-bom:33.5.1"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
