@@ -74,6 +74,7 @@ object UpdateNotifier {
 class BackgroundWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         runCatching { Announcements.checkNow(applicationContext) }
+        runCatching { Polls.checkNow(applicationContext) }
         runCatching { UpdateNotifier.checkNow(applicationContext) }
         Result.success()
     }

@@ -63,6 +63,33 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Encuestas Sí/No del administrador: todos las leen; solo el administrador las crea, cierra o borra.
+    // Cada cuenta vota UNA vez (polls/{id}/votes/{uid}), solo con la encuesta abierta; el voto no se puede cambiar.
+    match /polls/{pollId} {
+      allow read: if signedIn();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['title', 'description', 'closed', 'createdAt', 'by'])
+        && request.resource.data.title is string && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 80
+        && request.resource.data.description is string && request.resource.data.description.size() <= 500
+        && request.resource.data.closed == false
+        && request.resource.data.createdAt == request.time;
+      allow update: if isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['closed']);
+      allow delete: if isAdmin();
+
+      match /votes/{uid} {
+        allow read: if signedIn() && (isAdmin() || request.auth.uid == uid);
+        allow create: if signedIn() && request.auth.uid == uid
+          && get(/databases/$(database)/documents/polls/$(pollId)).data.closed == false
+          && request.resource.data.keys().hasOnly(['vote', 'email', 'name', 'votedAt'])
+          && request.resource.data.vote in ['yes', 'no']
+          && request.resource.data.email == myEmail()
+          && request.resource.data.name is string && request.resource.data.name.size() <= 80
+          && request.resource.data.votedAt == request.time;
+        allow update: if false;
+        allow delete: if isAdmin();
+      }
+    }
+
     // Avisos del administrador: todos los usuarios con sesión los leen; solo el administrador los crea.
     match /announcements/{id} {
       allow read: if signedIn();

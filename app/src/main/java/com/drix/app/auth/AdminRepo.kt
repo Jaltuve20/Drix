@@ -3,6 +3,7 @@ package com.drix.app.auth
 import com.google.android.gms.tasks.Task
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Source
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -19,6 +20,15 @@ data class Client(
 
 /** Una fila del ranking mensual: pedidos que Drix aceptó a ese cliente en el mes. */
 data class RankRow(val email: String, val name: String, val orders: Int)
+
+/** Un voto de una encuesta: quién votó, Sí (true) o No (false) y cuándo. */
+data class Voter(val email: String, val name: String, val yes: Boolean, val at: Long)
+
+/** Una encuesta del historial del administrador, con sus votos. */
+data class PollRow(val id: String, val title: String, val description: String, val createdAt: Long, val closed: Boolean, val voters: List<Voter>) {
+    val yes get() = voters.count { it.yes }
+    val no get() = voters.count { !it.yes }
+}
 
 /** Operaciones del administrador. Las reglas de Firestore solo las permiten si tu correo está en admins/{correo}. */
 object AdminRepo {
@@ -85,5 +95,41 @@ object AdminRepo {
                 val n = (d.getLong("orders") ?: 0L).toInt()
                 if (n <= 0) null else RankRow(d.getString("email").orEmpty(), d.getString("name").orEmpty(), n)
             }.sortedByDescending { it.orders }
+    }
+
+    /** Crea una encuesta Sí/No para todos los clientes (título + descripción). */
+    suspend fun createPoll(title: String, description: String): Result<Unit> = runCatching {
+        FirebaseFirestore.getInstance().collection("polls").add(
+            mapOf(
+                "title" to title.trim(), "description" to description.trim(), "closed" to false,
+                "createdAt" to FieldValue.serverTimestamp(), "by" to AuthRepo.user?.email.orEmpty()
+            )
+        ).wait()
+        Unit
+    }
+
+    /** Historial: las últimas encuestas con todos sus votos (de la más nueva a la más vieja). */
+    suspend fun loadPolls(): Result<List<PollRow>> = runCatching {
+        FirebaseFirestore.getInstance().collection("polls").orderBy("createdAt", Query.Direction.DESCENDING).limit(15)
+            .get(Source.SERVER).wait().documents.map { d ->
+                val votes = d.reference.collection("votes").get(Source.SERVER).wait().documents.map { v ->
+                    Voter(v.getString("email").orEmpty(), v.getString("name").orEmpty(), v.getString("vote") == "yes", v.getTimestamp("votedAt")?.toDate()?.time ?: 0L)
+                }.sortedBy { it.at }
+                PollRow(d.id, d.getString("title").orEmpty(), d.getString("description").orEmpty(), d.getTimestamp("createdAt")?.toDate()?.time ?: 0L, d.getBoolean("closed") == true, votes)
+            }
+    }
+
+    /** Cierra una encuesta (ya nadie puede votar) o la vuelve a abrir. */
+    suspend fun setPollClosed(id: String, closed: Boolean): Result<Unit> = runCatching {
+        FirebaseFirestore.getInstance().collection("polls").document(id).update("closed", closed).wait(); Unit
+    }
+
+    /** Borra la encuesta y todos sus votos. */
+    suspend fun deletePoll(id: String): Result<Unit> = runCatching {
+        val db = FirebaseFirestore.getInstance()
+        val ref = db.collection("polls").document(id)
+        val votes = ref.collection("votes").get(Source.SERVER).wait().documents
+        votes.chunked(400).forEach { chunk -> db.batch().also { b -> chunk.forEach { b.delete(it.reference) } }.commit().wait() }
+        ref.delete().wait(); Unit
     }
 }

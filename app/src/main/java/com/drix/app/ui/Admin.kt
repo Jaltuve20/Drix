@@ -184,6 +184,7 @@ fun AdminScreen(onBack: () -> Unit) {
                 else annConfirm = true
             }
         }
+        AdminPolls()
         DCard(index = 1) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Clientes (${clients.size})", fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))

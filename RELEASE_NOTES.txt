@@ -2,3 +2,4 @@
 • Recordatorios cada hora cuando Drix está pausado (los puedes desactivar en Perfil).
 • Nuevo tutorial animado.
 • Una cuenta solo puede estar abierta en un teléfono a la vez.
+• Encuestas: ahora puedes votar Sí o No en las ideas que propone Drix.

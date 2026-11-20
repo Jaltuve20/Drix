@@ -92,6 +92,11 @@ Lo nuevo en esta versión:
 **Mensaje listo para tus clientes:**
 > Al instalar, si Android dice que Drix no es de una tienda: toca *Más detalles* → *Instalar de todos modos*. Luego abre Drix, regístrate y, al activar la accesibilidad, si dice «Configuración restringida»: Ajustes de Drix → ⋮ → *Permitir ajustes restringidos* y vuelve a activarla. Es normal y solo se hace una vez.
 
+## Encuestas Sí / No (panel admin)
+- En el panel: **«Nueva encuesta»** (título + descripción) → a todos los clientes les sale una ventana para votar **Sí** o **No** (y una notificación si tienen la app cerrada). Cada cuenta vota una sola vez y no puede cambiar su voto.
+- **«Historial de encuestas»**: resultados con barras y porcentajes, **quién votó qué**, cerrar/reabrir y borrar. Se guardan en `polls/{id}` y `polls/{id}/votes/{uid}` (**vuelve a publicar `firestore.rules`**).
+- Solo se muestra al cliente la encuesta más reciente y abierta. «Ahora no» la pospone hasta la próxima vez que abra Drix.
+
 ## Novedades v1.8.0
 - **Botón flotante:** un toque activa/pausa Drix; mantenlo pulsado para «Abrir Drix» o ✕ ocultarlo. Se vuelve a mostrar en Perfil → «Mostrar botón flotante».
 - **Top Drix del mes (panel admin):** pedidos aceptados por cada cliente en el mes, ordenados de mayor a menor, con selector de mes y el total por cliente. Se guarda en la colección `monthly` (**vuelve a publicar `firestore.rules`**).

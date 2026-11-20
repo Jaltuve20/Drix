@@ -206,7 +206,9 @@ fun DrixApp(profile: Profile) {
         ) notifPerm.launch(android.Manifest.permission.POST_NOTIFICATIONS)
     }
     DisposableEffect(Unit) { val off = Announcements.listen(appCtx); onDispose { off() } }
+    DisposableEffect(Unit) { val off = com.drix.app.notify.Polls.listen(appCtx, notify = false); onDispose { off() } } // encuestas del admin
     UpdateDialogs()
+    PollDialog()
     Box(Modifier.fillMaxSize()) {
         Scaffold(
             containerColor = Fog,
