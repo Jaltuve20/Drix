@@ -2,6 +2,17 @@ package com.drix.app.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -46,6 +57,13 @@ private fun tutorialPages(name: String) = listOf(
             "Accesibilidad → Drix Automático" to "Para leer los pedidos y pulsar «Aceptar» por ti."
         ),
         tip = "Si Android bloquea la accesibilidad: Ajustes → Apps → Drix → ⋮ → «Permitir ajustes restringidos»."),
+    TPage("🫧", "El botón flotante", "El logo de Drix flota sobre tus apps para controlarlo sin abrir Drix:",
+        listOf(
+            "Un toque" to "Activa o pausa Drix al instante. Anillo verde = activo, rojo = pausado.",
+            "Mantenlo pulsado" to "Salen «Abrir Drix» y ✕ para ocultar el botón.",
+            "Arrástralo" to "Muévelo donde no estorbe: se pega al borde y recuerda su lugar."
+        ),
+        tip = "¿Lo ocultaste? Vuelve a mostrarlo en Perfil → «Mostrar botón flotante»."),
     TPage("💰", "Parámetros: tus reglas", "En la pestaña Parámetros defines cuándo te conviene un pedido. Drix solo acepta si cumple TODAS las reglas:",
         listOf(
             "Distancia máx. de recogida (km)" to "Qué tan lejos puede estar el cliente de ti. Ej. 2.5 km.",
@@ -110,7 +128,7 @@ fun TutorialScreen(name: String, onFinish: () -> Unit) {
                 alpha = 1f - off * .65f
                 val sc = 1f - off * .08f
                 scaleX = sc; scaleY = sc
-            }) { TutorialPage(pages[i]) }
+            }) { if (i == 0) TutorialIntro(name) else TutorialPage(pages[i]) }
         }
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             repeat(pages.size) { i -> Dot(i == pager.currentPage) }
@@ -173,4 +191,87 @@ private fun TutorialPage(p: TPage) = Column(
     }
     p.tip?.let { Text("💡 $it", fontSize = 12.sp, color = Muted, lineHeight = 17.sp, modifier = Modifier.padding(top = 14.dp).enter(p.items.size + 4)) }
     Spacer(Modifier.height(8.dp))
+}
+
+
+/* ═════════════ Intro animada (primera pantalla del tutorial) ═════════════ */
+
+private fun seg(t: Float, a: Float, b: Float) = ((t - a) / (b - a)).coerceIn(0f, 1f)
+private fun backOut(x: Float): Float { val c1 = 1.70158f; val c3 = c1 + 1f; val y = x - 1f; return 1f + c3 * y * y * y + c1 * y * y }
+/** Visibilidad de una escena entre [a] y [b] segundos, con fundidos de .35 s. */
+private fun win(t: Float, a: Float, b: Float) = seg(t, a, a + .35f) * (1f - seg(t, b - .35f, b))
+
+/** Pequeño «video» en bucle: el pedido bueno dura segundos → logo de Drix → filtros/zonas/palabras → Drix se activa. */
+@Composable
+private fun TutorialIntro(name: String) {
+    val t = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { while (true) { t.snapTo(0f); t.animateTo(9.6f, tween(9600, easing = LinearEasing)) } }
+    val inf = rememberInfiniteTransition(label = "intro")
+    val streak by inf.animateFloat(0f, 1f, infiniteRepeatable(tween(2200, easing = LinearEasing), RepeatMode.Restart), label = "streak")
+    val on by remember { derivedStateOf { t.value > 8.5f } }
+    val dot by animateColorAsState(if (on) Go else Color(0xFFEF4444), tween(250), label = "dot")
+
+    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(32.dp))
+                .background(Brush.verticalGradient(listOf(Charcoal, Ink)))
+                .drawBehind {
+                    val w = size.width; val h = size.height
+                    drawCircle(Yellow.copy(alpha = .10f), h * .42f, Offset(w * .98f, h * .02f))
+                    for (i in 0..6) { // líneas de velocidad que cruzan de derecha a izquierda
+                        val len = w * (.18f + (i % 3) * .07f)
+                        val ph = (streak + i * .19f) % 1f
+                        drawRoundRect(Yellow.copy(alpha = .30f), Offset(w - ph * (w + len), h * (.07f + i * .135f)), Size(len, 3.dp.toPx()), CornerRadius(3.dp.toPx()))
+                    }
+                },
+            Alignment.Center
+        ) {
+            // ESCENA 1 · el pedido bueno dura segundos
+            Column(Modifier.fillMaxWidth().padding(24.dp).graphicsLayer { alpha = win(t.value, 0f, 3.0f) }, horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("El pedido bueno", color = Color.White, fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center,
+                    modifier = Modifier.graphicsLayer { val p = backOut(seg(t.value, .1f, .7f)); scaleX = p; scaleY = p })
+                Text("dura segundos.", color = Yellow, fontSize = 36.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center,
+                    modifier = Modifier.graphicsLayer { val p = backOut(seg(t.value, .6f, 1.2f)); scaleX = p; scaleY = p })
+                Box(
+                    Modifier.padding(top = 22.dp).fillMaxWidth(.7f).height(8.dp).clip(RoundedCornerShape(50)).background(Color.White.copy(alpha = .12f))
+                        .drawBehind { drawRoundRect(Yellow, size = Size(size.width * (1f - seg(t.value, 1.2f, 2.8f)), size.height), cornerRadius = CornerRadius(size.height)) }
+                )
+                Text("Mientras manejas, otro conductor ya lo tomó.", color = Color.White.copy(alpha = .7f), fontSize = 14.sp, textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 16.dp).graphicsLayer { alpha = seg(t.value, 1.5f, 2.1f) })
+            }
+            // ESCENA 2 · llega Drix
+            Column(Modifier.fillMaxWidth().padding(24.dp).graphicsLayer { alpha = win(t.value, 3.0f, 6.2f) }, horizontalAlignment = Alignment.CenterHorizontally) {
+                if (name.isNotBlank()) Text("¡Hola, $name!", color = Color.White.copy(alpha = .75f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(bottom = 14.dp).graphicsLayer { alpha = seg(t.value, 3.4f, 3.9f) })
+                Box(Modifier.graphicsLayer { val p = backOut(seg(t.value, 3.1f, 3.9f)); scaleX = p; scaleY = p }) { DrixWordmark(58.dp, Yellow) }
+                Text("Acepta por ti los pedidos", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(top = 22.dp).graphicsLayer { alpha = seg(t.value, 4.0f, 4.6f); translationY = (1f - seg(t.value, 4.0f, 4.6f)) * 24f })
+                Text("que te convienen.", color = Yellow, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center,
+                    modifier = Modifier.graphicsLayer { alpha = seg(t.value, 4.4f, 5.0f); translationY = (1f - seg(t.value, 4.4f, 5.0f)) * 24f })
+            }
+            // ESCENA 3 · tus reglas y Drix se activa
+            Column(Modifier.fillMaxWidth().padding(22.dp).graphicsLayer { alpha = win(t.value, 6.2f, 9.6f) }, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Tú pones las reglas", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(bottom = 4.dp).graphicsLayer { alpha = seg(t.value, 6.4f, 6.9f) })
+                listOf("💰  Precio y distancia" to 6.7f, "🗺️  Zonas que sí y que no" to 7.1f, "🚫  Palabras bloqueadas" to 7.5f).forEachIndexed { i, (txt, st) ->
+                    val dir = if (i % 2 == 0) -1f else 1f
+                    Text(txt, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.fillMaxWidth(.88f)
+                            .graphicsLayer { val p = backOut(seg(t.value, st, st + .55f)); alpha = seg(t.value, st, st + .25f); translationX = (1f - p) * dir * size.width * .7f }
+                            .background(Color.White.copy(alpha = .09f), RoundedCornerShape(50)).padding(horizontal = 18.dp, vertical = 11.dp))
+                }
+                Row(
+                    Modifier.padding(top = 8.dp)
+                        .graphicsLayer { val p = backOut(seg(t.value, 8.0f, 8.6f)); scaleX = p; scaleY = p }
+                        .background(Color(0xFF2B3036), RoundedCornerShape(50)).padding(horizontal = 24.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(Modifier.size(12.dp).background(dot, CircleShape))
+                    Spacer(Modifier.width(10.dp))
+                    Text(if (on) "Activa" else "Pausada", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        Text("Desliza para ver cómo funciona  →", color = Muted, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+    }
 }

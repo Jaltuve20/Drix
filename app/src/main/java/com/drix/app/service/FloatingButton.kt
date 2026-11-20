@@ -2,6 +2,7 @@ package com.drix.app.service
 
 import android.animation.ValueAnimator
 import android.content.Context
+import android.content.Intent
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Outline
@@ -23,6 +24,7 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import com.drix.app.R
 import com.drix.app.data.DrixPrefs
+import com.drix.app.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -31,9 +33,10 @@ import kotlin.math.abs
 
 /**
  * Botón flotante con el logo de Drix para activar/pausar la automatización sin abrir la app.
- *  · Se toca el logo → salen ▶ (activar) y ✕ (detener). Se cierra solo a los pocos segundos.
+ *  · UN TOQUE → activa o pausa Drix al instante (ver el anillo: verde = activo, rojo = pausado).
+ *  · MANTENER PULSADO → salen «Abrir Drix» y ✕ «Ocultar botón» (se cierra solo a los pocos segundos).
  *  · Se arrastra para moverlo; al soltar se pega al borde más cercano y recuerda su posición.
- *  · El anillo del logo indica el estado: verde = activo, rojo = pausado.
+ *  · Ocultar el botón lo quita de todas las pantallas; se vuelve a mostrar en Perfil → «Mostrar botón flotante».
  * Vive en el servicio de accesibilidad (ventana TYPE_ACCESSIBILITY_OVERLAY: no necesita el permiso de superposición).
  */
 class FloatingButton(private val ctx: Context, scope: CoroutineScope) {
@@ -48,8 +51,6 @@ class FloatingButton(private val ctx: Context, scope: CoroutineScope) {
     private var bubbleView: View? = null
     private var panel: LinearLayout? = null
     private var ring: GradientDrawable? = null
-    private var play: Glyph? = null
-    private var cancel: Glyph? = null
     private var right = prefs.getBoolean("right", true)
     private var yPos = prefs.getInt("y", -1)
     private var expanded = false
@@ -61,6 +62,8 @@ class FloatingButton(private val ctx: Context, scope: CoroutineScope) {
         PixelFormat.TRANSLUCENT
     ).apply { gravity = Gravity.TOP or Gravity.START }
     private val collapse = Runnable { setExpanded(false) }
+    private var longFired = false
+    private val longPress = Runnable { longFired = true; bubbleView?.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); setExpanded(true) }
 
     private fun dm() = ctx.resources.displayMetrics
     private fun dp(v: Int) = (v * dm().density).toInt()
@@ -82,25 +85,37 @@ class FloatingButton(private val ctx: Context, scope: CoroutineScope) {
     }
 
     fun hide() {
-        ui.removeCallbacks(collapse)
+        ui.removeCallbacks(collapse); ui.removeCallbacks(longPress)
         root?.let { runCatching { wm.removeView(it) } }
         root = null; expanded = false
     }
 
     private fun refresh(on: Boolean) {
         ring?.setColor(if (on) green else red)
-        play?.current = on
-        cancel?.current = !on
+        bubbleView?.contentDescription = if (on) "Drix activo: toca para pausar" else "Drix pausado: toca para activar"
     }
 
-    private fun act(on: Boolean) {
+    /** Un toque en el botón: cambia entre activo y pausado. */
+    private fun toggle() {
+        val on = !DrixPrefs.cfg.value.enabled
         if (on && !DrixPrefs.accessValid()) {
-            Toast.makeText(ctx, "Tu acceso no está vigente. Renueva tu cuenta por WhatsApp.", Toast.LENGTH_LONG).show()
+            Toast.makeText(ctx, "Tu acceso no está vigente. Escríbenos por WhatsApp.", Toast.LENGTH_LONG).show()
             return
         }
         DrixPrefs.update { it.copy(enabled = on) }
-        setExpanded(false)
+        bubbleView?.animate()?.scaleX(1.18f)?.scaleY(1.18f)?.setDuration(110)?.withEndAction { bubbleView?.animate()?.scaleX(1f)?.scaleY(1f)?.setDuration(140)?.start() }?.start()
         Toast.makeText(ctx, if (on) "Drix activado" else "Drix pausado", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun openApp() {
+        setExpanded(false)
+        runCatching { ctx.startActivity(Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)) }
+    }
+
+    /** Cierra el botón flotante. Se vuelve a mostrar desde Perfil → «Mostrar botón flotante». */
+    private fun closeBubble() {
+        DrixPrefs.setBubble(false)
+        Toast.makeText(ctx, "Botón oculto. Para volver a verlo: Drix → Perfil → Mostrar botón flotante", Toast.LENGTH_LONG).show()
     }
 
     private fun build(): LinearLayout {
@@ -116,16 +131,15 @@ class FloatingButton(private val ctx: Context, scope: CoroutineScope) {
         val bubble = FrameLayout(ctx).apply {
             background = ringBg; alpha = 0.95f
             setPadding(dp(3), dp(3), dp(3), dp(3))
-            contentDescription = "Drix: abrir controles"
+            contentDescription = "Drix: toca para activar o pausar"
             addView(logo, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             layoutParams = LinearLayout.LayoutParams(dp(54), dp(54))
             setOnTouchListener(touch)
         }
         bubbleView = bubble
 
-        val pl = Glyph(ctx, 0, green).apply { contentDescription = "Activar Drix"; setOnClickListener { act(true) } }
-        val ca = Glyph(ctx, 1, red).apply { contentDescription = "Detener Drix"; setOnClickListener { act(false) } }
-        play = pl; cancel = ca
+        val pl = Glyph(ctx, 2, 0xFF3B4451.toInt()).apply { contentDescription = "Abrir Drix"; setOnClickListener { openApp() } }
+        val ca = Glyph(ctx, 1, 0xFF6B7280.toInt()).apply { contentDescription = "Ocultar el botón flotante"; setOnClickListener { closeBubble() } }
         val pn = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; visibility = View.GONE
             background = GradientDrawable().apply { cornerRadius = dp(30).toFloat(); setColor(0xEE191D21.toInt()) }
@@ -151,15 +165,19 @@ class FloatingButton(private val ctx: Context, scope: CoroutineScope) {
                     ui.removeCallbacks(collapse)
                     wasExpanded = expanded
                     if (expanded) setExpanded(false)   // vuelve al borde antes de arrastrar
-                    downX = e.rawX; downY = e.rawY; startX = lp.x; startY = lp.y; dragging = false
+                    downX = e.rawX; downY = e.rawY; startX = lp.x; startY = lp.y; dragging = false; longFired = false
+                    ui.postDelayed(longPress, ViewConfiguration.getLongPressTimeout().toLong())
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = e.rawX - downX; val dy = e.rawY - downY
-                    if (!dragging && (abs(dx) > slop || abs(dy) > slop)) dragging = true
+                    if (!dragging && !longFired && (abs(dx) > slop || abs(dy) > slop)) { dragging = true; ui.removeCallbacks(longPress) }
                     if (dragging) { lp.x = (startX + dx).toInt(); lp.y = (startY + dy).toInt(); update() }
                 }
-                MotionEvent.ACTION_UP -> { if (dragging) snap() else if (!wasExpanded) setExpanded(true) }
-                MotionEvent.ACTION_CANCEL -> if (dragging) snap()
+                MotionEvent.ACTION_UP -> {
+                    ui.removeCallbacks(longPress)
+                    if (dragging) snap() else if (!longFired && !wasExpanded) toggle()   // toque corto = activar / pausar
+                }
+                MotionEvent.ACTION_CANCEL -> { ui.removeCallbacks(longPress); if (dragging) snap() }
             }
             return true
         }
@@ -209,31 +227,23 @@ class FloatingButton(private val ctx: Context, scope: CoroutineScope) {
     }
 }
 
-/** Botón redondo del panel: ▶ (kind 0) o ✕ (kind 1). `current` = el estado en que está Drix ahora (aro blanco). */
+/** Botón redondo del panel: ✕ (kind 1) o «abrir app» ↗ (kind 2). */
 private class Glyph(ctx: Context, private val kind: Int, private val fill: Int) : View(ctx) {
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
-    var current = false
-        set(v) { field = v; invalidate() }
 
     override fun onDraw(c: Canvas) {
         val cx = width / 2f; val cy = height / 2f; val r = width / 2f
         p.style = Paint.Style.FILL; p.color = fill
         c.drawCircle(cx, cy, r - 2f, p)
-        if (current) {
-            p.style = Paint.Style.STROKE; p.strokeWidth = r * 0.14f; p.color = Color.WHITE
-            c.drawCircle(cx, cy, r - p.strokeWidth / 2f - 2f, p)
-        }
-        p.color = Color.WHITE
-        if (kind == 0) {
-            p.style = Paint.Style.FILL
-            val tri = Path().apply {
-                moveTo(cx - r * 0.18f, cy - r * 0.38f); lineTo(cx - r * 0.18f, cy + r * 0.38f); lineTo(cx + r * 0.40f, cy); close()
-            }
-            c.drawPath(tri, p)
-        } else {
-            p.style = Paint.Style.STROKE; p.strokeWidth = r * 0.20f; p.strokeCap = Paint.Cap.ROUND
+        p.color = Color.WHITE; p.style = Paint.Style.STROKE; p.strokeCap = Paint.Cap.ROUND; p.strokeWidth = r * 0.20f
+        if (kind == 1) {
             c.drawLine(cx - r * 0.28f, cy - r * 0.28f, cx + r * 0.28f, cy + r * 0.28f, p)
             c.drawLine(cx + r * 0.28f, cy - r * 0.28f, cx - r * 0.28f, cy + r * 0.28f, p)
+        } else {
+            // flecha ↗ (abrir)
+            c.drawLine(cx - r * 0.26f, cy + r * 0.26f, cx + r * 0.26f, cy - r * 0.26f, p)
+            c.drawLine(cx - r * 0.02f, cy - r * 0.28f, cx + r * 0.28f, cy - r * 0.28f, p)
+            c.drawLine(cx + r * 0.28f, cy - r * 0.28f, cx + r * 0.28f, cy + r * 0.02f, p)
         }
     }
 }

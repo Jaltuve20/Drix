@@ -204,7 +204,7 @@ object AuthRepo {
             val local = ctx.getSharedPreferences("drix_auth", Context.MODE_PRIVATE).getBoolean("tut_$uid", false)
             // Cuentas antiguas (sin el campo tutorialDone) cuentan como "tutorial ya visto": solo lo ven los nuevos.
             Profile(d.getString("firstName"), d.getString("lastName"), d.getString("phone"),
-                (d.getBoolean("tutorialDone") ?: true) || local, acc.admin)
+                (d.getBoolean("tutorialDone") ?: true) || local, acc.admin).also { DrixPrefs.setName(it.fullName) }
         }
     }
 

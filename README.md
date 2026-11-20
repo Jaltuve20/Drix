@@ -77,6 +77,12 @@ Lo nuevo en esta versión:
 
 ---
 
+## Novedades v1.8.0
+- **Botón flotante:** un toque activa/pausa Drix; mantenlo pulsado para «Abrir Drix» o ✕ ocultarlo. Se vuelve a mostrar en Perfil → «Mostrar botón flotante».
+- **Top Drix del mes (panel admin):** pedidos aceptados por cada cliente en el mes, ordenados de mayor a menor, con selector de mes y el total por cliente. Se guarda en la colección `monthly` (**vuelve a publicar `firestore.rules`**).
+- **Recordatorios cada hora** (solo con Drix pausado, dentro del horario del cliente, se borran solos a los 20 min, con botón «Activar ahora»). El cliente puede apagarlos en Perfil. Los textos están en `notify/Nudges.kt`.
+- **Tutorial** con una intro animada y una página nueva del botón flotante.
+
 ## Control de acceso (pago único, de por vida) y sesión única (v1.7.0)
 - **Venta única, sin meses ni prueba gratis.** El cliente se registra en la app, queda en **«Acceso pendiente»** y te escribe por WhatsApp con su correo. Tú verificas el pago y lo activas: **acceso de por vida**.
 - **Sin tu activación nadie entra**, aunque tenga el APK. Así el APK no sirve de nada si lo comparten: cada persona necesita su propio correo verificado.

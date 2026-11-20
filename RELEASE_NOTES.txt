@@ -1,3 +1,4 @@
-• Tu cuenta ahora es de por vida: se acabaron los vencimientos mensuales.
-• Seguridad: una cuenta solo puede estar abierta en un teléfono a la vez. Si entras en otro, la sesión anterior se cierra.
-• El acceso lo activa el administrador tras verificar tu correo.
+• Botón flotante: un toque activa o pausa Drix. Mantenlo pulsado para abrir Drix u ocultarlo (se vuelve a mostrar en Perfil).
+• Recordatorios cada hora cuando Drix está pausado (los puedes desactivar en Perfil).
+• Nuevo tutorial animado.
+• Una cuenta solo puede estar abierta en un teléfono a la vez.

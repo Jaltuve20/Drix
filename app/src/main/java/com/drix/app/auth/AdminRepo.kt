@@ -17,6 +17,9 @@ data class Client(
     val isAdminRow get() = hasDoc && plan == "admin"
 }
 
+/** Una fila del ranking mensual: pedidos que Drix aceptó a ese cliente en el mes. */
+data class RankRow(val email: String, val name: String, val orders: Int)
+
 /** Operaciones del administrador. Las reglas de Firestore solo las permiten si tu correo está en admins/{correo}. */
 object AdminRepo {
     private suspend fun <T> Task<T>.wait(): T = suspendCancellableCoroutine { c ->
@@ -73,5 +76,14 @@ object AdminRepo {
             )
         ).wait()
         Unit
+    }
+
+    /** Pedidos aceptados por cliente en el mes [month] («yyyy-MM»), de mayor a menor. */
+    suspend fun loadRanking(month: String): Result<List<RankRow>> = runCatching {
+        FirebaseFirestore.getInstance().collection("monthly").whereEqualTo("month", month).get(Source.SERVER).wait()
+            .documents.mapNotNull { d ->
+                val n = (d.getLong("orders") ?: 0L).toInt()
+                if (n <= 0) null else RankRow(d.getString("email").orEmpty(), d.getString("name").orEmpty(), n)
+            }.sortedByDescending { it.orders }
     }
 }

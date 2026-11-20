@@ -5,9 +5,11 @@ import android.net.Uri
 import android.util.Patterns
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Campaign
+import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.PersonOff
 import androidx.compose.material.icons.outlined.Refresh
@@ -29,6 +31,8 @@ import androidx.compose.ui.unit.sp
 import com.drix.app.auth.AdminRepo
 import com.drix.app.auth.AuthRepo
 import com.drix.app.auth.Client
+import com.drix.app.auth.RankRow
+import com.drix.app.data.MonthlyRank
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -65,6 +69,14 @@ fun AdminScreen(onBack: () -> Unit) {
     var annMsg by remember { mutableStateOf("") }
     var annConfirm by remember { mutableStateOf(false) }
     var annSending by remember { mutableStateOf(false) }
+    var monthOffset by remember { mutableStateOf(0) }            // 0 = este mes, -1 = mes pasado…
+    var rank by remember { mutableStateOf<List<RankRow>>(emptyList()) }
+    var rankLoading by remember { mutableStateOf(true) }
+    var rankError by remember { mutableStateOf<String?>(null) }
+    var showAllRank by remember { mutableStateOf(false) }
+    val cal = java.util.Calendar.getInstance().apply { add(java.util.Calendar.MONTH, monthOffset) }
+    val monthKey = MonthlyRank.monthKey(cal.timeInMillis)
+    val monthLabel = SimpleDateFormat("MMMM yyyy", Locale("es", "PE")).format(cal.time).replaceFirstChar { it.uppercase() }
 
     fun reload() {
         scope.launch {
@@ -73,7 +85,16 @@ fun AdminScreen(onBack: () -> Unit) {
             loading = false
         }
     }
+    fun reloadRank() {
+        scope.launch {
+            rankLoading = true
+            AdminRepo.loadRanking(monthKey).onSuccess { rank = it; rankError = null }.onFailure { rankError = AuthRepo.message(it) ?: "No se pudo cargar el ranking." }
+            rankLoading = false
+        }
+    }
     LaunchedEffect(Unit) { reload() }
+    LaunchedEffect(monthKey) { showAllRank = false; reloadRank() }
+    val ordersByEmail = rank.associate { it.email.lowercase() to it.orders }
     BackHandler(onBack = onBack)
 
     val shown = clients
@@ -103,6 +124,46 @@ fun AdminScreen(onBack: () -> Unit) {
                 if (Patterns.EMAIL_ADDRESS.matcher(e).matches()) renewFor = e
                 else Toast.makeText(ctx, "Escribe un correo válido", Toast.LENGTH_SHORT).show()
             }
+        }
+        DCard(index = 1) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    SectionTitle(Icons.Outlined.EmojiEvents, "Top Drix del mes", "Pedidos que Drix aceptó a cada cliente.")
+                }
+            }
+            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton({ monthOffset -= 1 }) { Text("‹", color = Ink, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp) }
+                Text(monthLabel, Modifier.weight(1f), fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                TextButton({ monthOffset += 1 }, enabled = monthOffset < 0) { Text("›", color = if (monthOffset < 0) Ink else Muted, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp) }
+            }
+            val total = rank.sumOf { it.orders }
+            Text(
+                if (rankLoading) "Cargando…" else "$total pedidos · ${rank.size} conductores",
+                fontSize = 12.sp, color = Muted, modifier = Modifier.padding(bottom = 10.dp)
+            )
+            rankError?.let { Text(it, color = Red, fontSize = 13.sp, modifier = Modifier.padding(bottom = 8.dp)) }
+            if (!rankLoading && rank.isEmpty() && rankError == null) Text("Aún no hay pedidos aceptados en este mes.", fontSize = 13.sp, color = Muted)
+            val top = rank.firstOrNull()?.orders ?: 1
+            (if (showAllRank) rank else rank.take(10)).forEachIndexed { i, r ->
+                Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            when (i) { 0 -> "🥇"; 1 -> "🥈"; 2 -> "🥉"; else -> "${i + 1}." },
+                            Modifier.width(38.dp), fontWeight = FontWeight.ExtraBold, fontSize = if (i < 3) 20.sp else 15.sp, color = Ink
+                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(r.name.ifBlank { r.email }, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                            if (r.name.isNotBlank()) Text(r.email, fontSize = 11.sp, color = Muted, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        }
+                        Text("${r.orders}", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = Ink)
+                    }
+                    Box(Modifier.padding(start = 38.dp, top = 5.dp).fillMaxWidth().height(5.dp).background(Fog, RoundedCornerShape(50))) {
+                        Box(Modifier.fillMaxWidth((r.orders.toFloat() / top).coerceIn(0.03f, 1f)).fillMaxHeight().background(if (i < 3) Yellow else YellowDeep.copy(alpha = .55f), RoundedCornerShape(50)))
+                    }
+                }
+            }
+            if (rank.size > 10) TextButton({ showAllRank = !showAllRank }) { Text(if (showAllRank) "Ver solo el top 10" else "Ver todos (${rank.size})", color = Ink, fontWeight = FontWeight.SemiBold) }
+            TextButton({ reloadRank() }, enabled = !rankLoading) { Icon(Icons.Outlined.Refresh, null, tint = Ink, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(4.dp)); Text(if (rankLoading) "Cargando…" else "Actualizar ranking", color = Ink, fontWeight = FontWeight.SemiBold) }
         }
         DCard(index = 1) {
             SectionTitle(Icons.Outlined.Campaign, "Enviar notificación a todos", "Les llega a todos los que tengan la app. Solo tú, como administrador, puedes enviarla.")
@@ -152,6 +213,7 @@ fun AdminScreen(onBack: () -> Unit) {
                         Text(st.label, color = st.color(), fontWeight = FontWeight.ExtraBold, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp))
                     }
                 }
+                ordersByEmail[c.email.lowercase()]?.let { Text("Pedidos en $monthLabel: $it", fontSize = 12.sp, color = Ink, fontWeight = FontWeight.SemiBold) }
                 if (c.plan.isNotBlank() && !c.isAdminRow) Text("Plan: ${c.plan}" + if (c.paidTotal > 0) " · Pagado en total: S/ %.2f".format(c.paidTotal) else "", fontSize = 12.sp, color = Muted)
                 if (!c.isAdminRow) {
                     Spacer(Modifier.height(12.dp))

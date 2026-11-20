@@ -40,6 +40,29 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Ranking mensual: monthly/{año-mes}_{uid}. Cada cliente solo puede SUMAR pedidos a su propio documento
+    // (de pocos en pocos); el administrador lee todos para armar el top del mes.
+    match /monthly/{id} {
+      allow read: if signedIn() && (isAdmin() || resource.data.uid == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid
+        && id == request.resource.data.month + '_' + request.auth.uid
+        && request.resource.data.keys().hasOnly(['month', 'uid', 'email', 'name', 'orders', 'updatedAt'])
+        && request.resource.data.month is string && request.resource.data.month.matches('^[0-9]{4}-[0-9]{2}$')
+        && request.resource.data.email == myEmail()
+        && request.resource.data.name is string && request.resource.data.name.size() <= 80
+        && request.resource.data.orders is int && request.resource.data.orders >= 1 && request.resource.data.orders <= 20
+        && request.resource.data.updatedAt == request.time;
+      allow update: if signedIn() && resource.data.uid == request.auth.uid
+        && request.resource.data.uid == resource.data.uid && request.resource.data.month == resource.data.month
+        && request.resource.data.keys().hasOnly(['month', 'uid', 'email', 'name', 'orders', 'updatedAt'])
+        && request.resource.data.email == myEmail()
+        && request.resource.data.name is string && request.resource.data.name.size() <= 80
+        && request.resource.data.orders is int && request.resource.data.orders > resource.data.orders
+        && request.resource.data.orders - resource.data.orders <= 20
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isAdmin();
+    }
+
     // Avisos del administrador: todos los usuarios con sesión los leen; solo el administrador los crea.
     match /announcements/{id} {
       allow read: if signedIn();

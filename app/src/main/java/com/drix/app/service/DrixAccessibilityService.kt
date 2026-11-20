@@ -36,6 +36,7 @@ class DrixAccessibilityService : AccessibilityService() {
     private var stopWatch: (() -> Unit)? = null
     private var stopAnn: (() -> Unit)? = null
     private var stopSess: (() -> Unit)? = null
+    private var loggedIn = false
 
     private var lastRun = 0L
     private var trailingScheduled = false
@@ -71,8 +72,10 @@ class DrixAccessibilityService : AccessibilityService() {
             stopWatch = if (u != null) AuthRepo.watchAccess { scope.launch { AuthRepo.checkAccess() } } else null
             stopSess?.invoke(); stopSess = if (u != null) AuthRepo.watchSession() else null // otra sesión en otro teléfono → se cierra esta
             stopAnn?.invoke(); stopAnn = if (u != null) Announcements.listen(this) else null
-            if (u != null) bubble.show() else bubble.hide()   // el botón flotante solo aparece con la sesión iniciada
+            loggedIn = u != null
+            applyBubble()   // el botón flotante solo aparece con la sesión iniciada y si no lo cerraste
         }
+        scope.launch { DrixPrefs.bubbleOn.collect { applyBubble() } }
         // Activar → aviso "esperando pedidos". Pausar → se quita el aviso y se cancelan clics pendientes.
         scope.launch {
             DrixPrefs.cfg.map { it.enabled }.distinctUntilChanged().collect { on ->
@@ -85,6 +88,8 @@ class DrixAccessibilityService : AccessibilityService() {
             }
         }
     }
+    private fun applyBubble() { if (loggedIn && DrixPrefs.bubbleOn.value) bubble.show() else bubble.hide() }
+
     override fun onUnbind(intent: Intent?): Boolean { instance = null; return super.onUnbind(intent) }
 
     private fun listHandled(sig: String) = sig == listPending || (sig == listSig && System.currentTimeMillis() - listAt < 6000)
@@ -295,6 +300,7 @@ class DrixAccessibilityService : AccessibilityService() {
             acceptingOrder?.let { o ->
                 val km = listOf(o.pickupKm, o.tripKm).filter { !it.isNaN() }.sum()
                 DrixStats.record(o.fare.takeIf { !it.isNaN() } ?: 0f, km, sig)
+                com.drix.app.data.MonthlyRank.onAccepted() // ranking mensual del administrador
             }
         }
         acceptingOrder = null

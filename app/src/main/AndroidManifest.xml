@@ -42,6 +42,8 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
+        <receiver android:name=".notify.NudgeReceiver" android:exported="false" />
+
         <!-- Servicio de accesibilidad: el usuario debe habilitarlo manualmente en Ajustes -->
         <service
             android:name=".service.DrixAccessibilityService"

@@ -1026,6 +1026,14 @@ fun ProfileScreen(profile: Profile, onAdmin: () -> Unit = {}) {
             }
         }
         DCard(index = 3) {
+            val bubbleOn by DrixPrefs.bubbleOn.collectAsStateWithLifecycle()
+            val nudgesOn by DrixPrefs.nudgesOn.collectAsStateWithLifecycle()
+            SectionTitle(Icons.Outlined.Info, "Botón flotante y recordatorios", "Toca el botón para activar o pausar Drix. Mantenlo pulsado para ocultarlo.")
+            SwitchRow("Mostrar botón flotante", bubbleOn) { DrixPrefs.setBubble(it) }
+            Spacer(Modifier.height(8.dp))
+            SwitchRow("Recordatorios cada hora (con Drix pausado)", nudgesOn) { DrixPrefs.setNudges(it) }
+        }
+        DCard(index = 4) {
             SectionTitle(Icons.Outlined.Shield, "Seguridad y versión", "Cambia tu contraseña por correo. Drix se actualiza solo desde internet.")
             InfoRow(Icons.Outlined.Info, "Versión instalada", Updater.installedName(ctx).ifBlank { "—" }, divider = false)
             Spacer(Modifier.height(12.dp))
@@ -1042,7 +1050,7 @@ fun ProfileScreen(profile: Profile, onAdmin: () -> Unit = {}) {
             }
         }
         if (profile.isAdmin) PillButton("Panel de administrador", color = Charcoal, icon = Icons.Outlined.AdminPanelSettings, onClick = onAdmin)
-        DebugCard(4)
+        DebugCard(5)
         GhostButton("Cerrar sesión", tone = Danger, icon = Icons.Outlined.PowerSettingsNew) { AuthRepo.signOut() }
         Spacer(Modifier.height(4.dp))
     }

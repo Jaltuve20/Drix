@@ -34,6 +34,12 @@ object DrixPrefs {
     private val _words = MutableStateFlow<List<String>>(emptyList())
     /** Palabras o frases que el usuario quiere bloquear (ej. «casco doble»). */
     val words = _words.asStateFlow()
+    private val _bubble = MutableStateFlow(true)
+    /** true = se muestra el botón flotante sobre las demás apps. Se oculta desde el propio botón y se vuelve a mostrar en Perfil. */
+    val bubbleOn = _bubble.asStateFlow()
+    private val _nudges = MutableStateFlow(true)
+    /** true = recordatorios cada hora cuando Drix está pausado. */
+    val nudgesOn = _nudges.asStateFlow()
     val debug = MutableStateFlow("") // últimos textos leídos por el servicio (diagnóstico)
 
     fun init(ctx: Context) {
@@ -48,6 +54,8 @@ object DrixPrefs {
             minDelayMs = sp.getInt("dmin", d.minDelayMs), maxDelayMs = sp.getInt("dmax", d.maxDelayMs),
             unknownOk = sp.getBoolean("unk", d.unknownOk), genderBlock = sp.getInt("gblk", d.genderBlock), readDelay = sp.getBoolean("rdly", d.readDelay)
         )
+        _bubble.value = sp.getBoolean("bubble", true)
+        _nudges.value = sp.getBoolean("nudges", true)
         _words.value = sp.getString("bwords", "")!!.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
         _zones.value = sp.getString("zones3", "")!!.split(";").mapNotNull {
             val p = it.split(":")
@@ -75,6 +83,13 @@ object DrixPrefs {
         if (_cfg.value.enabled) update { it.copy(enabled = false) }
     }
     fun accessValid(): Boolean = ::sp.isInitialized && sp.getBoolean("acc_ok", false)
+
+    fun setBubble(v: Boolean) { _bubble.value = v; if (::sp.isInitialized) sp.edit().putBoolean("bubble", v).apply() }
+    fun setNudges(v: Boolean) { _nudges.value = v; if (::sp.isInitialized) sp.edit().putBoolean("nudges", v).apply() }
+
+    /** Nombre del cliente en caché (lo usa el ranking mensual, que se escribe desde el servicio). */
+    fun setName(n: String) { if (::sp.isInitialized) sp.edit().putString("uname", n).apply() }
+    fun name(): String = if (::sp.isInitialized) sp.getString("uname", "").orEmpty() else ""
 
     fun setWords(w: List<String>) {
         _words.value = w
