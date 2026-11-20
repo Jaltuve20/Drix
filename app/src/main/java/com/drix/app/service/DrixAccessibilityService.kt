@@ -35,6 +35,7 @@ class DrixAccessibilityService : AccessibilityService() {
     private var stopAuth: (() -> Unit)? = null
     private var stopWatch: (() -> Unit)? = null
     private var stopAnn: (() -> Unit)? = null
+    private var stopSess: (() -> Unit)? = null
 
     private var lastRun = 0L
     private var trailingScheduled = false
@@ -68,6 +69,7 @@ class DrixAccessibilityService : AccessibilityService() {
         stopAuth = AuthRepo.listen { u ->
             stopWatch?.invoke()
             stopWatch = if (u != null) AuthRepo.watchAccess { scope.launch { AuthRepo.checkAccess() } } else null
+            stopSess?.invoke(); stopSess = if (u != null) AuthRepo.watchSession() else null // otra sesión en otro teléfono → se cierra esta
             stopAnn?.invoke(); stopAnn = if (u != null) Announcements.listen(this) else null
             if (u != null) bubble.show() else bubble.hide()   // el botón flotante solo aparece con la sesión iniciada
         }
@@ -324,5 +326,5 @@ class DrixAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() {}
-    override fun onDestroy() { if (::bubble.isInitialized) bubble.hide(); stopAuth?.invoke(); stopWatch?.invoke(); stopAnn?.invoke(); scope.cancel(); instance = null; handler.removeCallbacksAndMessages(null); if (::overlay.isInitialized) overlay.hide(); super.onDestroy() }
+    override fun onDestroy() { if (::bubble.isInitialized) bubble.hide(); stopAuth?.invoke(); stopWatch?.invoke(); stopSess?.invoke(); stopAnn?.invoke(); scope.cancel(); instance = null; handler.removeCallbacksAndMessages(null); if (::overlay.isInitialized) overlay.hide(); super.onDestroy() }
 }

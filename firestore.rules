@@ -17,45 +17,27 @@ service cloud.firestore {
     // Administrador = existe el documento admins/{tu correo}. Solo se crea desde la consola de Firebase.
     function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(myEmail())); }
 
-    // Prueba gratis (1 día): el propio usuario puede crear SU documento allowed/{correo} UNA sola vez,
-    // solo como prueba, y solo junto con las marcas de su dispositivo y de su celular (batch atómico).
-    // Si el dispositivo o el celular ya usaron la prueba, la marca ya existe y la operación completa falla.
-    function trialOk(email) {
-      let d = request.resource.data;
-      return signedIn() && myEmail() == email
-        && d.keys().hasOnly(['plan', 'trial', 'deviceId', 'phone', 'createdAt'])
-        && d.plan == 'prueba' && d.trial == true
-        && d.createdAt == request.time
-        && d.deviceId is string && d.deviceId.size() >= 8 && d.deviceId.size() <= 64
-        && d.phone is string && d.phone.matches('^[+][0-9]{9,15}$')
-        && existsAfter(/databases/$(database)/documents/trialClaims/$('d_' + d.deviceId))
-        && existsAfter(/databases/$(database)/documents/trialClaims/$('p_' + d.phone));
-    }
-
     match /admins/{email} {
       allow get: if signedIn() && myEmail() == email;
       allow list, write: if false;
     }
 
-    // Lista de acceso: cada cliente puede LEER su propio documento; solo el administrador la escribe
-    // (renovaciones desde el panel de la app). Documento = correo en minúsculas.
-    //   until (timestamp) = vencimiento · trial = true y sin until → prueba: createdAt + 1 día.
+    // Lista de acceso (pago único, de por vida): cada cliente puede LEER su propio documento; solo el administrador
+    // lo crea/edita (botón "Verificar y activar" del panel). Documento = correo en minúsculas. Sin documento = sin acceso.
     match /allowed/{email} {
       allow get: if signedIn() && myEmail() == email;
       allow read, write: if isAdmin();
-      allow create: if trialOk(email);
     }
 
-    // Marcas anti-abuso de la prueba gratis (una por dispositivo y una por celular). No se pueden editar ni borrar desde la app.
-    match /trialClaims/{id} {
-      allow create: if signedIn()
-        && request.resource.data.keys().hasOnly(['email', 'createdAt'])
-        && request.resource.data.email == myEmail()
-        && request.resource.data.createdAt == request.time
-        && (id.matches('^d_.{8,64}$') || id.matches('^p_[+][0-9]{9,15}$'))
-        && existsAfter(/databases/$(database)/documents/allowed/$(myEmail()));
-      allow read, delete: if isAdmin();
-      allow update: if false;
+    // Sesión única: sessions/{uid} guarda el identificador de la sesión activa. Cada vez que alguien inicia sesión en un
+    // teléfono escribe uno nuevo; los demás teléfonos de esa cuenta lo detectan y se cierran solos.
+    match /sessions/{uid} {
+      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['sid', 'device', 'updatedAt'])
+        && request.resource.data.sid is string && request.resource.data.sid.size() >= 8 && request.resource.data.sid.size() <= 64
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isAdmin();
     }
 
     // Avisos del administrador: todos los usuarios con sesión los leen; solo el administrador los crea.

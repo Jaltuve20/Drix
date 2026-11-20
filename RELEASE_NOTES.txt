@@ -1,4 +1,3 @@
-• Diseño renovado: pantallas más ordenadas y con animaciones.
-• Inicio: resumen de hoy y lista de lo que falta configurar.
-• Parámetros: resumen en vivo y botón «Guardar cambios» flotante.
-• Los avisos del administrador y las actualizaciones ahora te llegan como notificación aunque la app esté cerrada.
+• Tu cuenta ahora es de por vida: se acabaron los vencimientos mensuales.
+• Seguridad: una cuenta solo puede estar abierta en un teléfono a la vez. Si entras en otro, la sesión anterior se cierra.
+• El acceso lo activa el administrador tras verificar tu correo.

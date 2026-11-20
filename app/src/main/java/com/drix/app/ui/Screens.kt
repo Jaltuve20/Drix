@@ -985,9 +985,7 @@ fun ProfileScreen(profile: Profile, onAdmin: () -> Unit = {}) {
     fun whatsapp(text: String) = ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/51900385006?text=" + Uri.encode(text))))
     val badge: Pair<String, Color>? = when {
         profile.isAdmin -> "Administrador" to Ink
-        profile.isTrial -> "Prueba gratis" to Amber
-        profile.until != null -> "Cuenta activa" to Go
-        else -> null
+        else -> "Cuenta activa" to Go
     }
 
     Screen(hero = {
@@ -1014,7 +1012,6 @@ fun ProfileScreen(profile: Profile, onAdmin: () -> Unit = {}) {
                 }
             }
         }
-        profile.until?.let { SubscriptionCard(it, profile.isTrial) { whatsapp("Hola Drix, quiero renovar mi acceso.\nCorreo: $email") } }
         DCard(index = 2) {
             SectionTitle(Icons.Outlined.Lock, "Datos de la cuenta", "Los registraste una sola vez y no se pueden editar desde la app.")
             InfoRow(Icons.Outlined.Person, "Nombres", profile.firstName.orEmpty().ifBlank { "—" })
@@ -1115,62 +1112,6 @@ fun ExtrasScreen() {
         confirmButton = { TextButton({ DrixStats.resetDay(key); confirm = false }) { Text("Sí, reiniciar", color = Ink, fontWeight = FontWeight.ExtraBold) } },
         dismissButton = { TextButton({ confirm = false }) { Text("Cancelar", color = Muted) } }
     )
-}
-
-/** Contador de vencimiento del acceso: meses · días · horas · min · seg (los dígitos ruedan al cambiar). */
-@Composable
-fun SubscriptionCard(untilMs: Long, trial: Boolean = false, onRenew: () -> Unit) {
-    var nowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) { while (true) { delay(1000); nowMs = System.currentTimeMillis() } }
-    val zone = ZoneId.systemDefault()
-    val now = LocalDateTime.ofInstant(Instant.ofEpochMilli(nowMs), zone)
-    val end = LocalDateTime.ofInstant(Instant.ofEpochMilli(untilMs), zone)
-    val expired = !end.isAfter(now)
-    val months = if (expired) 0 else ChronoUnit.MONTHS.between(now, end)
-    val a = now.plusMonths(months)
-    val days = if (expired) 0 else ChronoUnit.DAYS.between(a, end)
-    val b = a.plusDays(days)
-    val hours = if (expired) 0 else ChronoUnit.HOURS.between(b, end)
-    val c = b.plusHours(hours)
-    val mins = if (expired) 0 else ChronoUnit.MINUTES.between(c, end)
-    val secs = if (expired) 0 else ChronoUnit.SECONDS.between(c.plusMinutes(mins), end)
-    val soon = !expired && ChronoUnit.DAYS.between(now, end) < 7
-    val tone = if (expired || soon) Danger else Ink
-    val date = remember(untilMs) { SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault()).format(Date(untilMs)) }
-    DCard(index = 1) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(38.dp).background(if (expired || soon) Danger.copy(alpha = .1f) else Tint, RoundedCornerShape(12.dp)), Alignment.Center) {
-                Icon(Icons.Outlined.Schedule, null, tint = if (expired || soon) Danger else Amber, modifier = Modifier.size(20.dp))
-            }
-            Spacer(Modifier.width(12.dp))
-            Text(if (expired) "Tu cuenta venció" else if (trial) "Tu prueba gratis termina en:" else "Tu cuenta vence en:", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = tone)
-        }
-        Spacer(Modifier.height(14.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            CountTile(months, "Meses", tone, Modifier.weight(1f))
-            CountTile(days, "Días", tone, Modifier.weight(1f))
-            CountTile(hours, "Horas", tone, Modifier.weight(1f))
-            CountTile(mins, "Min", tone, Modifier.weight(1f))
-            CountTile(secs, "Seg", tone, Modifier.weight(1f))
-        }
-        Text("Vence el $date", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 10.dp))
-        if (expired || soon) {
-            Spacer(Modifier.height(12.dp))
-            PillButton("Renovar por WhatsApp", color = Go, icon = Icons.Outlined.SupportAgent, onClick = onRenew)
-        }
-    }
-}
-
-@Composable
-private fun CountTile(value: Long, label: String, color: Color, mod: Modifier) {
-    Column(mod.background(Fog, RoundedCornerShape(14.dp)).padding(vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        AnimatedContent(
-            value,
-            transitionSpec = { (slideInVertically { -it } + fadeIn(tween(200))) togetherWith (slideOutVertically { it } + fadeOut(tween(150))) },
-            label = "count"
-        ) { v -> Text(v.toString().padStart(2, '0'), fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = color) }
-        Text(label, fontSize = 12.sp, color = Muted)
-    }
 }
 
 /* ═════════════ SELECTOR DE APP OBJETIVO ═════════════ */

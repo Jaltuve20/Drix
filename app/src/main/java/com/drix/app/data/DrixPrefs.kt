@@ -64,21 +64,17 @@ object DrixPrefs {
     }
 
     /* ── Acceso (lista de correos habilitados). Lo consulta también el servicio de accesibilidad, sin depender de la pantalla. ── */
-    fun grantAccess(untilMs: Long?) {
+    fun grantAccess() {
         if (!::sp.isInitialized) return
-        sp.edit().putBoolean("acc_ok", true).putLong("acc_until", untilMs ?: 0L).apply()
+        sp.edit().putBoolean("acc_ok", true).apply()
     }
     /** Quita el acceso y APAGA la automatización. */
     fun revokeAccess() {
         if (!::sp.isInitialized) return
-        sp.edit().putBoolean("acc_ok", false).putLong("acc_until", 0L).apply()
+        sp.edit().putBoolean("acc_ok", false).apply()
         if (_cfg.value.enabled) update { it.copy(enabled = false) }
     }
-    fun accessValid(): Boolean {
-        if (!::sp.isInitialized || !sp.getBoolean("acc_ok", false)) return false
-        val u = sp.getLong("acc_until", 0L)
-        return u == 0L || System.currentTimeMillis() < u
-    }
+    fun accessValid(): Boolean = ::sp.isInitialized && sp.getBoolean("acc_ok", false)
 
     fun setWords(w: List<String>) {
         _words.value = w

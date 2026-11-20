@@ -1,4 +1,6 @@
-# Drix v1.5.0
+# Drix v1.7.0 — pago único + sesión única
+
+# (anterior) Drix v1.5.0
 
 **Novedades 1.5.0**
 - **Aviso flotante nuevo** (tarjeta oscura con logo y estado en color). Desaparece al pausar la automatización y al salir de la app de pedidos.
@@ -75,22 +77,25 @@ Lo nuevo en esta versión:
 
 ---
 
-## Control de acceso, suscripciones y panel de administrador (v1.6.0)
-- **Cliente nuevo** → se registra y recibe **1 día de prueba gratis** automáticamente (una por dispositivo y una por celular).
-- Pasado ese día, la sesión se cierra y ve «Tu cuenta venció · Renueva por WhatsApp».
-- **Tú (administrador)** abres la app → **Perfil → 🛠 Panel de administrador**: ves a todos los clientes (los que necesitan atención aparecen primero), y con un toque **activas o renuevas**: eliges «1 mes · S/7», «2 meses · S/10» u otros meses/monto. También puedes escribirles por WhatsApp o quitarles el acceso.
-- Cada pago se suma **desde hoy** (cuenta nueva o ya vencida) o **desde su vencimiento actual** si aún le quedan días. Los meses son de calendario (12/11 → 12/12).
-- Tus precios rápidos están en `app/src/main/java/com/drix/app/ui/Admin.kt` → `PRESETS` (una sola línea).
+## Control de acceso (pago único, de por vida) y sesión única (v1.7.0)
+- **Venta única, sin meses ni prueba gratis.** El cliente se registra en la app, queda en **«Acceso pendiente»** y te escribe por WhatsApp con su correo. Tú verificas el pago y lo activas: **acceso de por vida**.
+- **Sin tu activación nadie entra**, aunque tenga el APK. Así el APK no sirve de nada si lo comparten: cada persona necesita su propio correo verificado.
+- **Una cuenta = un teléfono.** Si alguien inicia sesión con la misma cuenta en otro teléfono, la sesión del primero se cierra sola (en segundos si tiene internet; si estaba sin internet, al volver a abrir la app o recuperar conexión) y ve el aviso «Sesión cerrada». La automatización también se apaga. La sesión nueva siempre gana. Los **administradores** quedan exentos (no se les cierra la sesión).
+- **Tú (administrador)**: **Perfil → 🛠 Panel de administrador**. Los correos **pendientes** salen primero; con **«Verificar y activar»** (o escribiendo el correo arriba) confirmas el pago y listo. También puedes escribirles por WhatsApp o **quitarles el acceso**. Tu precio por defecto está en `app/src/main/java/com/drix/app/ui/Admin.kt` → `PRICE`.
 
 **Configuración de UNA sola vez (consola de Firebase → Firestore → Datos):**
-1. Publica las reglas del archivo `firestore.rules` (pestaña Reglas).
-2. Crea la colección **`admins`** → ID del documento = **tu correo en minúsculas** → cualquier campo (ej. `rol` = `admin`). Solo se puede crear desde la consola: nadie puede ascenderse a administrador desde la app.
-3. Abre la app (con internet) con ese correo: te aparecerá el botón del panel. El administrador no vence nunca.
+1. Publica las reglas del archivo `firestore.rules` (pestaña Reglas). **Vuelve a publicarlas: hay una colección nueva (`sessions`).**
+2. Crea la colección **`admins`** → ID del documento = **tu correo en minúsculas** → cualquier campo (ej. `rol` = `admin`). Solo se puede crear desde la consola.
+3. Abre la app (con internet) con ese correo: te aparecerá el botón del panel.
 
-**Anti-abuso de la prueba gratis:** la prueba se bloquea por dispositivo (identificador de Android, guardado con hash) y por número de celular. No es infalible (alguien con otro celular y otro número podría repetirla), pero lo hace incómodo. Si necesitas resetear la prueba de alguien: Firestore → `trialClaims` → borra sus marcas (`d_…` y `p_+51…`) y su documento en `allowed`.
+**Si ya tenías clientes con el sistema anterior:**
+- Los que tenían suscripción por meses (`allowed/{correo}` con `until`) ahora tienen acceso **sin vencimiento**. Si no quieres eso, bórrales el documento en `allowed` o quítales el acceso desde el panel.
+- Las cuentas de **prueba gratis** (`trial = true`) quedan **sin acceso** hasta que las actives desde el panel.
+- Las colecciones `trialClaims` ya no se usan; puedes borrarlas.
 
-**Tiempo real:** mientras el cliente tiene la app abierta (o el servicio de accesibilidad activo) y hay internet, los cambios del panel le llegan en segundos: si le **quitas el acceso**, la pantalla cambia a «Acceso pendiente» y la automatización se apaga; si le **renuevas**, el contador y el vencimiento se actualizan solos. Tras un vencimiento o un acceso quitado, la automatización queda apagada: el cliente debe volver a activar el interruptor de Inicio.
-Necesita internet al abrir la app (la lista se consulta siempre al servidor).
+**Límites honestos:** la sesión única la hace cumplir la propia app (con reglas de Firestore que protegen el identificador). Alguien con conocimientos que modifique el APK podría saltársela; para cerrarlo del todo haría falta un servidor propio (Cloud Functions, plan Blaze). Para el uso normal (compartir cuenta entre amigos) funciona bien.
+
+**Tiempo real:** mientras el cliente tiene la app abierta (o el servicio de accesibilidad activo) y hay internet, si le **quitas el acceso** la pantalla cambia a «Acceso pendiente» y la automatización se apaga. Necesita internet al abrir la app (el acceso se consulta siempre al servidor).
 
 ## Actualizaciones automáticas (cómo funciona)
 1. Tú subes cambios a la rama **main** de GitHub. El workflow compila el APK y lo publica como una **Release** junto con `update.json` (versión, enlace al APK, huella SHA-256 y notas).

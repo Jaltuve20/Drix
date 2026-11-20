@@ -143,19 +143,14 @@ fun DrixRoot() {
     }
     val st = ps
     val p = (st as? PState.Loaded)?.p
-    // Al llegar el contador a 00: se cierra la sesión (y se apaga la automatización) y se muestra «renueva por WhatsApp».
-    var expiredEmail by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(user?.uid) { if (user != null) expiredEmail = null }
-    LaunchedEffect(p?.until, user?.uid) {
-        val end = p?.until ?: return@LaunchedEffect
-        while (System.currentTimeMillis() < end) delay((end - System.currentTimeMillis()).coerceIn(250L, 30_000L))
-        expiredEmail = user?.email
-        AuthRepo.signOut()
-    }
-    val ex = expiredEmail
+    // SESIÓN ÚNICA: si la cuenta se abre en otro teléfono, esta sesión se cierra sola y se muestra el aviso.
+    val kickedEmail by AuthRepo.kicked.collectAsStateWithLifecycle()
+    LaunchedEffect(user?.uid) { if (user != null) AuthRepo.kicked.value = null }
+    DisposableEffect(user?.uid) { val off = AuthRepo.watchSession(); onDispose { off() } }
+    val ex = kickedEmail
     val stage = when {
         splash -> "splash"
-        user == null && ex != null -> "expired"
+        user == null && ex != null -> "kicked"
         user == null -> "auth"
         busy || st is PState.Loading -> "splash"
         st is PState.Denied -> "denied"
@@ -171,7 +166,7 @@ fun DrixRoot() {
     ) { s ->
         when (s) {
             "splash" -> SplashScreen()
-            "expired" -> ExpiredScreen(ex.orEmpty()) { expiredEmail = null }
+            "kicked" -> KickedScreen(ex.orEmpty()) { AuthRepo.kicked.value = null }
             "auth" -> AuthFlow()
             "denied" -> NoAccessScreen(user?.email.orEmpty(), (st as? PState.Denied)?.expired ?: false, { AuthRepo.version.value++ }, { AuthRepo.signOut() })
             "failed" -> ProfileLoadErrorScreen((st as? PState.Failed)?.msg.orEmpty(), { AuthRepo.version.value++ }, { AuthRepo.signOut() })

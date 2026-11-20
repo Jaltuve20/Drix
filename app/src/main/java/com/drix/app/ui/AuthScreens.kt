@@ -376,32 +376,27 @@ fun ProfileLoadErrorScreen(msg: String, onRetry: () -> Unit, onSignOut: () -> Un
         TextButton(onSignOut, Modifier.padding(top = 10.dp)) { Text("Cerrar sesión", color = Ink) }
     }
 
-/** Pantalla para cuentas cuyo correo aún no fue habilitado (o cuyo acceso venció). */
+/** Pantalla para cuentas cuyo correo aún no fue verificado/habilitado por el administrador. */
 @Composable
 fun NoAccessScreen(email: String, expired: Boolean, onRetry: () -> Unit, onSignOut: () -> Unit) {
     val ctx = LocalContext.current
     AuthPage(
-        if (expired) "Tu acceso venció" else "Acceso pendiente",
-        if (expired) "El acceso de $email terminó. Escríbenos por WhatsApp para renovarlo."
-        else "Tu correo $email todavía no está habilitado. Escríbenos por WhatsApp con ese correo y te damos acceso."
+        "Acceso pendiente",
+        "Tu correo $email todavía no está habilitado. Escríbenos por WhatsApp con ese correo, verificamos tu compra y te damos acceso."
     ) {
         MainButton("Ya me habilitaron · Reintentar", false, onRetry)
         TextButton({
-            val msg = if (expired) "Hola Drix, quiero renovar mi acceso.\nCorreo: $email" else "Hola Drix, quiero acceso a la app.\nCorreo: $email"
+            val msg = "Hola Drix, quiero acceso a la app.\nCorreo: $email"
             ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/51900385006?text=" + Uri.encode(msg))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }, Modifier.padding(top = 10.dp)) { Text("💬 Pedir acceso por WhatsApp", color = Ink, fontWeight = FontWeight.Bold) }
         TextButton(onSignOut) { Text("Cerrar sesión", color = Ink) }
     }
 }
 
-/** Se muestra cuando el contador llegó a 00: la sesión ya se cerró. */
+/** Se muestra cuando la cuenta se abrió en otro teléfono: esta sesión ya se cerró. */
 @Composable
-fun ExpiredScreen(email: String, onLogin: () -> Unit) {
-    val ctx = LocalContext.current
-    AuthPage("Tu cuenta venció", "El acceso de $email terminó y cerramos tu sesión. Renueva tu cuenta por WhatsApp para continuar.") {
-        MainButton("💬 Renovar cuenta por WhatsApp", false) {
-            ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/51900385006?text=" + Uri.encode("Hola Drix, quiero renovar mi cuenta.\nCorreo: $email"))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
-        TextButton(onLogin, Modifier.padding(top = 10.dp)) { Text("Ya renové · Iniciar sesión", color = Ink) }
+fun KickedScreen(email: String, onLogin: () -> Unit) {
+    AuthPage("Sesión cerrada", "La cuenta $email se abrió en otro teléfono, por eso cerramos esta sesión. Una cuenta solo puede estar abierta en un teléfono a la vez.") {
+        MainButton("Iniciar sesión de nuevo", false, onLogin)
     }
 }

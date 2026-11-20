@@ -1,22 +1,18 @@
 package com.drix.app.auth
 
 import com.google.android.gms.tasks.Task
-import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import com.google.firebase.firestore.Source
-import java.time.Instant
-import java.time.ZoneId
-import java.util.Date
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-/** Una fila del panel de administrador (cliente registrado y/o con documento en allowed). */
+/** Una fila del panel de administrador. hasDoc = ya verificado/activado (documento en allowed, de por vida). */
 data class Client(
     val email: String, val name: String, val phone: String, val plan: String,
-    val untilMs: Long?, val trial: Boolean, val hasDoc: Boolean, val paidTotal: Double
+    val hasDoc: Boolean, val paidTotal: Double
 ) {
     val isAdminRow get() = hasDoc && plan == "admin"
 }
@@ -28,10 +24,6 @@ object AdminRepo {
         addOnFailureListener { c.resumeWithException(it) }
     }
 
-    /** base + n meses (calendario: 12/11 → 12/12), en la zona horaria del celular. */
-    fun addMonths(baseMs: Long, months: Int): Long =
-        Instant.ofEpochMilli(baseMs).atZone(ZoneId.systemDefault()).plusMonths(months.toLong()).toInstant().toEpochMilli()
-
     suspend fun load(): Result<List<Client>> = runCatching {
         val db = FirebaseFirestore.getInstance()
         val allowed = db.collection("allowed").get(Source.SERVER).wait()
@@ -39,40 +31,33 @@ object AdminRepo {
         val byEmail = HashMap<String, Client>()
         users.documents.forEach { u ->
             val e = u.getString("email")?.trim()?.lowercase().orEmpty()
-            if (e.isNotBlank()) byEmail[e] = Client(e, u.getString("name").orEmpty(), u.getString("phone").orEmpty(), "", null, false, false, 0.0)
+            if (e.isNotBlank()) byEmail[e] = Client(e, u.getString("name").orEmpty(), u.getString("phone").orEmpty(), "", false, 0.0)
         }
         allowed.documents.forEach { a ->
             val e = a.id.lowercase()
-            val base = byEmail[e] ?: Client(e, "", a.getString("phone").orEmpty(), "", null, false, false, 0.0)
-            byEmail[e] = base.copy(
-                plan = a.getString("plan").orEmpty(), untilMs = AuthRepo.untilOf(a),
-                trial = a.getBoolean("trial") == true && a.getTimestamp("until") == null,
-                hasDoc = true, paidTotal = a.getDouble("paidTotal") ?: 0.0
-            )
+            val base = byEmail[e] ?: Client(e, "", a.getString("phone").orEmpty(), "", false, 0.0)
+            // Los documentos de la antigua prueba gratis (trial = true) cuentan como NO activados.
+            val active = a.getBoolean("trial") != true
+            byEmail[e] = base.copy(plan = a.getString("plan").orEmpty(), hasDoc = active, paidTotal = a.getDouble("paidTotal") ?: 0.0)
         }
         val me = AuthRepo.user?.email?.trim()?.lowercase()
         byEmail.values.filter { it.email != me }.toList() // tú no apareces en tu propia lista
     }
 
     /**
-     * Activa o renueva: suma [months] meses. Cuenta desde HOY si la cuenta es nueva o ya venció;
-     * si todavía le quedan días, los suma al vencimiento actual (no pierde lo que ya pagó).
-     * [paid] (opcional) queda registrado: último pago y total acumulado.
+     * Verifica y activa un correo DE POR VIDA (pago único). Sin vencimiento: si el documento traía un "until" o "trial"
+     * de la época de las suscripciones, se borra. [paid] (opcional) queda registrado: último pago y total acumulado.
      */
-    suspend fun grant(email: String, months: Int, paid: Double?): Result<Long> = runCatching {
+    suspend fun grant(email: String, paid: Double?): Result<Unit> = runCatching {
         val ref = FirebaseFirestore.getInstance().collection("allowed").document(email.trim().lowercase())
-        val snap = ref.get(Source.SERVER).wait()
-        val cur = if (snap.exists()) AuthRepo.untilOf(snap) else null
-        val until = addMonths(maxOf(System.currentTimeMillis(), cur ?: 0L), months)
         val data = mutableMapOf<String, Any>(
-            "plan" to (if (months == 1) "1 mes" else "$months meses"),
-            "until" to Timestamp(Date(until)), "trial" to false, "updatedAt" to FieldValue.serverTimestamp()
+            "plan" to "de por vida", "trial" to false, "until" to FieldValue.delete(), "updatedAt" to FieldValue.serverTimestamp()
         )
         if (paid != null && paid > 0) {
             data["lastPaid"] = paid; data["lastPaidAt"] = FieldValue.serverTimestamp(); data["paidTotal"] = FieldValue.increment(paid)
         }
         ref.set(data, SetOptions.merge()).wait()
-        until
+        Unit
     }
 
     suspend fun revoke(email: String): Result<Unit> = runCatching {
